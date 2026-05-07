@@ -1,0 +1,24 @@
+{
+  "name": "Ricard AI",
+  "short_name": "Ricard AI",
+  "description": "L'IA de la famille Ricard",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#fbfaf6",
+  "theme_color": "#1a1a1a",
+  "start_url": "./",
+  "scope": "./",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    { "name": "Chat", "url": "./#chat", "description": "Ouvrir le chat" },
+    { "name": "Code", "url": "./#code", "description": "Ouvrir le mode Code" }
+  ]
+}

@@ -1,0 +1,3135 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Ricard AI</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+<!-- PWA -->
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icon.svg">
+<meta name="theme-color" content="#1a1a1a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ricard AI">
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+body { font-family: 'Inter', system-ui, sans-serif; background: #fbfaf6; color: #1a1a1a; -webkit-font-smoothing: antialiased; }
+* { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,.12) transparent; }
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-thumb { background: rgba(0,0,0,.12); border-radius: 3px; }
+button { font-family: inherit; box-sizing: border-box; }
+textarea { display: block; }
+@keyframes pulse    { 0%,100% { opacity:1 } 50% { opacity:.3 } }
+@keyframes fadeIn   { from { opacity:0; transform:translateY(4px) } to { opacity:1; transform:translateY(0) } }
+@keyframes mic-ring { 0%,100% { box-shadow:0 0 0 0 rgba(227,90,79,.5); } 60% { box-shadow:0 0 0 8px rgba(227,90,79,0); } }
+@keyframes speaking-bar { 0%,100% { transform:scaleY(.3) } 50% { transform:scaleY(1) } }
+.streaming-dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:#e35a4f; animation:pulse 1s infinite; }
+.mic-active    { animation:mic-ring .9s ease-out infinite; }
+.speaking-wave { display:inline-flex; align-items:center; gap:2px; }
+.speaking-wave span { display:inline-block; width:3px; border-radius:2px; background:#3a6dd9; animation:speaking-bar .6s ease-in-out infinite; }
+.speaking-wave span:nth-child(2) { animation-delay:.1s; }
+.speaking-wave span:nth-child(3) { animation-delay:.2s; }
+
+/* ── MOBILE FIXES ── */
+html, body, #root { height: 100dvh; }
+
+/* Safe area support (iPhone notch + home bar) */
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.safe-top    { padding-top:    env(safe-area-inset-top, 0px); }
+
+/* Prevent iOS input zoom (font-size must be ≥ 16px) */
+@media (max-width: 700px) {
+  textarea, input, select { font-size: 16px !important; }
+  /* Ensure tap targets are minimum 44px */
+  button { min-height: 36px; }
+}
+
+/* Scroll iOS fix */
+.scroll-y {
+  overflow-y: scroll;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* Bottom nav safe area */
+.mobile-nav {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
+  background: white; border-top: 1.5px solid #1a1a1a;
+  display: flex; align-items: stretch;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.mobile-nav-btn {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 2px; padding: 8px 0; border: none; background: transparent;
+  cursor: pointer; font-family: inherit; -webkit-tap-highlight-color: transparent;
+}
+.mobile-nav-btn span:first-child { font-size: 20px; line-height: 1; }
+.mobile-nav-btn span:last-child  { font-size: 10px; }
+
+/* ── DARK MODE ── */
+body.dark-mode { filter: invert(0.92) hue-rotate(180deg); }
+body.dark-mode img, body.dark-mode iframe { filter: invert(1) hue-rotate(180deg); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+// Apply dark mode immediately to avoid flash
+if (localStorage.getItem('ricard_dark')) document.body.classList.add('dark-mode');
+</script>
+
+<!-- LZ-String compression -->
+<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
+
+<!-- Firebase Compat SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<!-- Google Identity Services (Drive OAuth) -->
+<script src="https://accounts.google.com/gsi/client" async></script>
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-css.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+// CLOUD MODULE — Firebase Firestore + Google Drive
+// ══════════════════════════════════════════════════════════════
+const PFX_LS = 'ricard_ai_';
+const _lsGet = (k, fb=null) => { try { const v=localStorage.getItem(PFX_LS+k); return v?JSON.parse(v):fb; } catch { return fb; } };
+const _lsSet = (k, v) => { try { localStorage.setItem(PFX_LS+k, JSON.stringify(v)); } catch {} };
+
+// ── Family ID (partagé entre appareils) ───────────────────────
+function getFamilyId() {
+  let id = localStorage.getItem('ricard_familyId');
+  if (!id) { id = ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16)); localStorage.setItem('ricard_familyId', id); }
+  return id;
+}
+
+// ── Firebase state ─────────────────────────────────────────────
+const CLOUD = { db: null, enabled: false };
+const FB_APP_NAME = 'ricard'; // app nommée → évite le conflit "[DEFAULT] already exists"
+
+function loadFbConfig()   { return _lsGet('fb_config', null); }
+function saveFbConfig(c)  { _lsSet('fb_config', c); }
+function loadGClientId()  { return _lsGet('g_client_id', ''); }
+function saveGClientId(v) { _lsSet('g_client_id', v); }
+
+// Extrait un objet depuis du JSON ou du JS (clés non quotées, commentaires, etc.)
+function extractJsonObj(text) {
+  const t = text.trim();
+  // 1. JSON pur
+  try { return JSON.parse(t); } catch {}
+  // 2. Extraire le bloc {...}
+  const m = t.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  let s = m[0];
+  // 3. Nettoyer : supprimer commentaires // et /* */
+  s = s.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  // 4. Quoter les clés JS non quotées (apiKey: → "apiKey":)
+  s = s.replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)(\s*:)/g, '$1"$2"$3');
+  // 5. Supprimer les virgules trailing (,} ou ,])
+  s = s.replace(/,(\s*[}\]])/g, '$1');
+  try { return JSON.parse(s); } catch {}
+  // 6. Dernier recours : évaluation JS sécurisée
+  try { return Function('"use strict";return(' + m[0] + ')')(); } catch {}
+  return null;
+}
+
+function initFirebase(cfg) {
+  if (typeof firebase === 'undefined') return 'SDK Firebase non chargé — recharge la page';
+  try {
+    if (!cfg || !cfg.projectId) return 'projectId manquant dans la config';
+    // Cherche une app nommée 'ricard' déjà existante
+    let app = (firebase.apps || []).find(a => a.name === FB_APP_NAME);
+    if (app) {
+      if (app.options.projectId === cfg.projectId) {
+        CLOUD.db = app.firestore();
+        CLOUD.enabled = true;
+        console.log('[Firebase] ✅ réutilisé', cfg.projectId);
+        return true;
+      }
+      app.delete().then(() => initFirebase(cfg)).catch(() => {});
+      return 'Changement de projet — réessaie dans 2 secondes';
+    }
+    app = firebase.initializeApp(cfg, FB_APP_NAME);
+    CLOUD.db = app.firestore();
+    CLOUD.enabled = true;
+    console.log('[Firebase] ✅ initialisé', cfg.projectId);
+    return true;
+  } catch(e) {
+    console.warn('[Firebase] init error:', e.message);
+    CLOUD.enabled = false;
+    return e.message;
+  }
+}
+
+// Auto-init au démarrage
+(function() { const c = loadFbConfig(); if (c) initFirebase(c); })();
+
+// ── Firestore save / load ─────────────────────────────────────
+const _saveTimers = {};
+function cloudSaveLater(pid, tab, convs) {
+  const k = pid+'_'+tab;
+  clearTimeout(_saveTimers[k]);
+  _saveTimers[k] = setTimeout(() => cloudSave(pid, tab, convs), 3000);
+}
+async function cloudSave(pid, tab, convs) {
+  if (!CLOUD.enabled) return;
+  try {
+    await CLOUD.db.collection('ricard').doc(getFamilyId()+'_'+pid+'_'+tab).set({
+      convs: JSON.stringify(convs.slice(-30)),
+      updatedAt: new Date().toISOString(),
+    });
+  } catch(e) { console.warn('[Firebase] save:', e.message); }
+}
+async function cloudLoadAll(pid) {
+  if (!CLOUD.enabled) return null;
+  const tabs = ['chat','code','design','zya','zelie'];
+  const result = {};
+  for (const tab of tabs) {
+    try {
+      const doc = await CLOUD.db.collection('ricard').doc(getFamilyId()+'_'+pid+'_'+tab).get();
+      if (doc.exists) {
+        const convs = JSON.parse(doc.data().convs || 'null');
+        if (convs?.length) result[tab] = convs;
+      }
+    } catch(e) { console.warn('[Firebase] load:', e.message); }
+  }
+  return Object.keys(result).length ? result : null;
+}
+
+// ── Google Drive backup / restore ─────────────────────────────
+// ── Export / Import JSON (pas besoin de Drive API) ───────────
+function backupToFile() {
+  const data = {
+    version: 2,
+    exportDate: new Date().toISOString(),
+    familyId: getFamilyId(),
+    profiles: {}
+  };
+  ['papa','maman','zya','zelie'].forEach(pid => {
+    data.profiles[pid] = {};
+    ['chat','code','design','zya','zelie'].forEach(tab => {
+      const convs = _lsGet('convs_'+pid+'_'+tab, []);
+      if (convs.length) data.profiles[pid][tab] = convs;
+    });
+  });
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'ricard-ai-backup-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+function restoreFromFile(onDone) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (!data?.profiles) { alert('❌ Fichier invalide.'); return; }
+        Object.entries(data.profiles).forEach(([pid, tabs]) => {
+          Object.entries(tabs).forEach(([tab, convs]) => {
+            if (Array.isArray(convs)) _lsSet('convs_'+pid+'_'+tab, convs);
+          });
+        });
+        if (data.familyId) localStorage.setItem('ricard_familyId', data.familyId);
+        alert('✅ Restauré depuis ' + file.name + '\nL\'app va se recharger.');
+        onDone?.();
+        setTimeout(() => window.location.reload(), 500);
+      } catch(e) { alert('❌ Fichier invalide : ' + e.message); }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+</script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useReducer, useContext, createContext, useCallback, useRef, useMemo } = React;
+
+// ─── UUID polyfill (Safari < 15.4 / vieux Android) ──────────
+function uuid() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
+// ─── Mobile detection ────────────────────────────────────────
+function useIsMobile() {
+  const [m, setM] = useState(() => window.innerWidth < 700);
+  useEffect(() => {
+    const h = () => setM(window.innerWidth < 700);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
+  return m;
+}
+
+// ─── Palette ────────────────────────────────────────────────
+const C = {
+  ink:'#1a1a1a', paper:'#fbfaf6', shade:'#f1eee5',
+  muted:'#888', faint:'#ccc',
+  red:'#e35a4f', yellow:'#f4cb4f', blue:'#3a6dd9',
+  green:'#5fa055', pink:'#e88ab2', purple:'#8a6fc7',
+  orange:'#e8975a', teal:'#4ba39a',
+};
+
+// ─── Models ─────────────────────────────────────────────────
+const MODELS = [
+  // ── Gratuit (suffix :free obligatoire sur OpenRouter) ──
+  { id:'google/gemini-flash-1.5:free',              name:'Gemini Flash 1.5',    provider:'Google',    cat:'gratuit',    speed:3, ctx:'1M',   inCost:0,    outCost:0,    note:'Gratuit · limité', vision:true },
+  { id:'google/gemini-2.0-flash-exp:free',          name:'Gemini 2.0 Flash',    provider:'Google',    cat:'gratuit',    speed:3, ctx:'1M',   inCost:0,    outCost:0,    note:'Gratuit · limité', vision:true },
+  { id:'mistralai/mistral-7b-instruct:free',        name:'Mistral 7B',          provider:'Mistral',   cat:'gratuit',    speed:3, ctx:'32k',  inCost:0,    outCost:0,    note:'Gratuit · open source' },
+  { id:'meta-llama/llama-3.1-8b-instruct:free',     name:'Llama 3.1 8B',        provider:'Meta',      cat:'gratuit',    speed:3, ctx:'128k', inCost:0,    outCost:0,    note:'Gratuit · open source' },
+  { id:'qwen/qwen-2.5-72b-instruct:free',           name:'Qwen 2.5 72B',        provider:'Qwen',      cat:'gratuit',    speed:2, ctx:'32k',  inCost:0,    outCost:0,    note:'Gratuit · puissant' },
+  { id:'deepseek/deepseek-chat:free',               name:'DeepSeek Chat',        provider:'DeepSeek',  cat:'gratuit',    speed:2, ctx:'64k',  inCost:0,    outCost:0,    note:'Gratuit · très capable' },
+  // ── Pas cher ──
+  { id:'anthropic/claude-haiku-4-5',                name:'Claude Haiku 4.5',    provider:'Anthropic', cat:'pas-cher',   speed:3, ctx:'200k', inCost:0.8,  outCost:4,    note:'Rapide & efficace', isDefault:true },
+  { id:'openai/gpt-4o-mini',                        name:'GPT-4o Mini',          provider:'OpenAI',    cat:'pas-cher',   speed:3, ctx:'128k', inCost:0.15, outCost:0.6,  note:'Très économique' },
+  { id:'google/gemini-flash-1.5',                   name:'Gemini Flash (payant)', provider:'Google',   cat:'pas-cher',   speed:3, ctx:'1M',   inCost:0.075,outCost:0.3,  note:'Rapide · vision', vision:true },
+  // ── Performant ──
+  { id:'anthropic/claude-sonnet-4-5',               name:'Claude Sonnet 4.5',   provider:'Anthropic', cat:'performant', speed:2, ctx:'200k', inCost:3,    outCost:15,   note:'Top raisonnement' },
+  { id:'openai/gpt-4o',                             name:'GPT-4o',               provider:'OpenAI',    cat:'performant', speed:2, ctx:'128k', inCost:2.5,  outCost:10,   note:'Multimodal', vision:true },
+  { id:'google/gemini-2.5-pro-preview',             name:'Gemini 2.5 Pro',       provider:'Google',    cat:'performant', speed:2, ctx:'2M',   inCost:1.25, outCost:5,    note:'Contexte 2M', vision:true },
+  // ── Code ──
+  { id:'qwen/qwen-2.5-coder-32b-instruct',          name:'Qwen Coder 32B',       provider:'Qwen',      cat:'code',       speed:2, ctx:'32k',  inCost:0.3,  outCost:0.5,  note:'Spécialisé code' },
+  { id:'deepseek/deepseek-coder-v2',                name:'DeepSeek Coder V2',    provider:'DeepSeek',  cat:'code',       speed:2, ctx:'128k', inCost:0.14, outCost:0.28, note:'Excellent en code' },
+  // ── Premium ──
+  { id:'anthropic/claude-opus-4',                   name:'Claude Opus 4',        provider:'Anthropic', cat:'premium',    speed:1, ctx:'200k', inCost:15,   outCost:75,   note:'Le plus puissant' },
+  { id:'openai/gpt-4-turbo',                        name:'GPT-4 Turbo',          provider:'OpenAI',    cat:'premium',    speed:1, ctx:'128k', inCost:10,   outCost:30,   note:'Puissant', vision:true },
+  // ── Vision ──
+  { id:'anthropic/claude-sonnet-4-6',               name:'Claude Sonnet 4.6',   provider:'Anthropic', cat:'vision',     speed:2, ctx:'200k', inCost:3,    outCost:15,   note:'Vision + raison.', vision:true },
+];
+const MODEL_CATS = [
+  { id:'all', label:'Tous' },
+  { id:'gratuit', label:'Gratuit', color:C.green },
+  { id:'pas-cher', label:'Pas cher', color:C.blue },
+  { id:'performant', label:'Performant', color:C.orange },
+  { id:'code', label:'Code', color:C.purple },
+  { id:'premium', label:'Premium', color:C.red },
+  { id:'vision', label:'Vision', color:C.teal },
+];
+const CAT_COLOR = { gratuit:C.green, 'pas-cher':C.blue, performant:C.orange, code:C.purple, premium:C.red, vision:C.teal };
+const DEFAULT_MODEL = 'anthropic/claude-haiku-4-5';
+const DEFAULT_CODE_MODEL = 'qwen/qwen-2.5-coder-32b-instruct';
+
+// ─── Kids content filter ──────────────────────────────────────
+const KIDS_BLOCKED = [
+  'tuer','meurtre','mort violent','arme à feu','pistolet','fusil','bombe','couteau',
+  'violence','torture','battre','frapper',
+  'sexe','sexuel','porno','pornographie','déshabill','nude','naked',
+  'alcool','ivre','soûl','drogue','cannabis','cocaïne','héroïne','cigarette',
+  'suicide','automutilation','se blesser','se tuer','se suicider',
+];
+function isKidsSafe(text) {
+  const low = text.toLowerCase();
+  return !KIDS_BLOCKED.some(w => low.includes(w));
+}
+
+// ─── Multimodal API message builder ──────────────────────────
+function buildMsgContent(msg) {
+  if (!msg.attachments?.length) return msg.content || '';
+  const parts = [];
+  if (msg.content?.trim()) parts.push({ type:'text', text: msg.content });
+  for (const att of msg.attachments) {
+    if (att.type === 'image') {
+      parts.push({ type:'image_url', image_url:{ url:`data:${att.mimeType};base64,${att.data}` } });
+    }
+  }
+  return parts.length ? parts : (msg.content || '');
+}
+
+const _modelCache = {};
+function getModel(id) {
+  return MODELS.find(m => m.id === id) || _modelCache[id] || (id ? { id, name: id.split('/').pop(), provider: id.split('/')[0], inCost: 0, outCost: 0, ctx:'?', speed:2 } : MODELS[2]);
+}
+function estimateCost(modelId, inTk, outTk) {
+  const m = getModel(modelId);
+  return (inTk / 1e6) * (m.inCost || 0) + (outTk / 1e6) * (m.outCost || 0);
+}
+function speedLabel(s) { return ['','⚡','⚡⚡','⚡⚡⚡'][s] || '⚡'; }
+
+// ─── Profiles ────────────────────────────────────────────────
+const PROFILES = [
+  { id:'papa',  name:'Papa',  label:'P', color:C.orange, admin:true },
+  { id:'maman', name:'Maman', label:'M', color:C.teal,   admin:true },
+  { id:'zya',   name:'Zya',   label:'Z', color:C.purple, age:13, isKid:true },
+  { id:'zelie', name:'Zélie', label:'Z', color:C.pink,   age:9,  isKid:true },
+];
+function getProfile(id) { return PROFILES.find(p => p.id === id); }
+
+const SYSTEM_PROMPTS = {
+  chat:   `Tu es Ricard AI, un assistant IA personnel pour la famille Ricard. Tu es intelligent, utile et chaleureux. Tu réponds en français sauf si on te parle dans une autre langue.`,
+  code:   `Tu es Ricard AI en mode Code. Tu es un expert développeur. Tu fournis du code propre, bien commenté, et tu expliques les décisions techniques. Tu utilises des blocs de code avec le bon langage. Tu réponds en français.`,
+  design: `Tu es Ricard AI en mode Design. Tu es expert en design, UX et créativité. Tu génères du SVG, du HTML/CSS, donnes des conseils de style. Tu réponds en français.`,
+  zya:    `Tu t'appelles Nova et tu parles à Zya, une fille brillante de 13 ans. Tu l'aides avec ses devoirs (en expliquant vraiment), tu discutes de sujets qui l'intéressent. Tu adaptes ton vocabulaire : sérieux quand il faut, cool autrement. Tu réponds toujours en français.`,
+  zelie:  `Tu t'appelles Pixel et tu parles à Zélie, une petite fille adorable de 9 ans. Tu utilises un langage simple et fun, avec des émojis 🎉. Tu lui racontes des histoires, joues à des devinettes, l'aides doucement avec ses devoirs. Tu es toujours bienveillant et positif. Tu réponds toujours en français.`,
+};
+
+// ─── Storage with optional LZ-string compression ─────────────
+const PFX = 'ricard_ai_';
+function lsGet(key, fallback = null) {
+  try {
+    const v = localStorage.getItem(PFX + key);
+    if (!v) return fallback;
+    if (v.startsWith('lz:') && window.LZString) {
+      const dec = window.LZString.decompressFromUTF16(v.slice(3));
+      return dec ? JSON.parse(dec) : fallback;
+    }
+    return JSON.parse(v);
+  } catch { return fallback; }
+}
+function lsSet(key, val) {
+  try {
+    const str = JSON.stringify(val);
+    let stored = str;
+    if (str.length > 500 && window.LZString) {
+      stored = 'lz:' + window.LZString.compressToUTF16(str);
+    }
+    localStorage.setItem(PFX + key, stored);
+  } catch(e) {
+    // Quota dépassé (fréquent sur iOS avec conversations + images)
+    // → purger les anciennes conversations pour libérer de la place
+    if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+      try {
+        // Supprimer les conversations les plus anciennes de chaque tab/profil
+        const toDelete = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith(PFX + 'convs_')) toDelete.push(k);
+        }
+        // Supprimer la moitié des conversations (les plus anciennes en premier)
+        toDelete.slice(0, Math.ceil(toDelete.length / 2)).forEach(k => localStorage.removeItem(k));
+        // Réessayer
+        localStorage.setItem(PFX + key, JSON.stringify(val));
+      } catch {}
+    }
+  }
+}
+
+const DEFAULT_MODELS_PER_TAB = {
+  chat:   'anthropic/claude-haiku-4-5',
+  code:   'qwen/qwen-2.5-coder-32b-instruct',
+  design: 'anthropic/claude-haiku-4-5',
+  zya:    'anthropic/claude-haiku-4-5',
+  zelie:  'google/gemini-flash-1.5',
+};
+function loadSettings() {
+  const s = lsGet('settings', {});
+  // Double sécurité : clé API sauvegardée aussi séparément
+  const apiKey = s.apiKey || lsGet('apikey_backup', '') || '';
+  return {
+    apiKey,
+    budgets:       s.budgets       ?? { papa:50, maman:50, zya:5, zelie:5 },
+    adminPin:      s.adminPin      ?? '',
+    defaultModels: s.defaultModels ?? { ...DEFAULT_MODELS_PER_TAB },
+    profileContext: s.profileContext ?? { papa:'', maman:'', zya:'', zelie:'' },
+    socraticMode:   s.socraticMode  ?? { zya:false, zelie:false },
+    dailyLimits:    s.dailyLimits   ?? { papa:null, maman:null, zya:30, zelie:20 },
+  };
+}
+function dateKey() { const d = new Date(); return `${d.getFullYear()}_${d.getMonth()+1}_${d.getDate()}`; }
+function saveSettings(s) {
+  lsSet('settings', s);
+  // Sauvegarde séparée de la clé API (résiste mieux au quota iOS)
+  if (s.apiKey) lsSet('apikey_backup', s.apiKey);
+}
+function monthKey() { const d = new Date(); return `${d.getFullYear()}_${d.getMonth()+1}`; }
+function loadMonthCost(pid) { return lsGet(`cost_${pid}_${monthKey()}`, 0); }
+function addMonthCost(pid, amount) {
+  const k = `cost_${pid}_${monthKey()}`;
+  const v = lsGet(k, 0) + amount;
+  lsSet(k, v); return v;
+}
+function loadConvs(pid, tab) { return lsGet(`convs_${pid}_${tab}`, []); }
+function stripAttachmentData(convs) {
+  // Retire le base64 des images pour économiser le localStorage (garde nom + type)
+  return convs.map(c => ({
+    ...c,
+    messages: c.messages.map(m => ({
+      ...m,
+      attachments: m.attachments?.map(a => ({ ...a, data: null, preview: null })) ?? undefined,
+    })),
+  }));
+}
+function saveConvs(pid, tab, convs) {
+  lsSet(`convs_${pid}_${tab}`, stripAttachmentData(convs.slice(-30)));
+}
+function loadCostLog() { return lsGet('cost_log', []); }
+function appendCostLog(entry) {
+  const log = lsGet('cost_log', []);
+  log.unshift(entry);
+  lsSet('cost_log', log.slice(0, 200));
+}
+
+// ─── OpenRouter streaming ─────────────────────────────────────
+// Extrait le texte d'un contenu OpenRouter (string, tableau multi-part, ou null)
+function extractContent(raw) {
+  if (!raw && raw !== 0) return '';
+  if (typeof raw === 'string') return raw;
+  if (Array.isArray(raw)) {
+    return raw.filter(p => p?.type === 'text').map(p => p.text || '').join('');
+  }
+  return String(raw);
+}
+
+async function streamChat({ apiKey, model, messages, onChunk, onDone, onError, signal }) {
+  // Safari iOS et certains navigateurs mobiles ne supportent pas le SSE
+  // → toujours JSON (non-streaming) sur mobile
+  const isMobileUA = /iPad|iPhone|iPod|Android|Mobile|CriOS|FxiOS/i.test(navigator.userAgent)
+                  || window.innerWidth < 768;
+
+  let resp;
+  try {
+    resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': location.origin,
+        'X-Title': 'Ricard AI',
+      },
+      body: JSON.stringify({ model, messages, stream: !isMobileUA }),
+      signal,
+    });
+  } catch(err) {
+    if (err.name === 'AbortError') return;
+    onError?.('Connexion impossible. Vérifiez votre clé API.');
+    return;
+  }
+
+  if (!resp.ok) {
+    let msg = `Erreur ${resp.status}`;
+    try { const e = await resp.json(); msg = e.error?.message || msg; } catch {}
+    onError?.(msg); return;
+  }
+
+  // ── Mode mobile : réponse JSON directe ───────────────────────
+  if (isMobileUA) {
+    let rawText;
+    try { rawText = await resp.text(); } catch(e) { onError?.('Lecture impossible : ' + e.message); return; }
+
+    // Parfois le serveur envoie quand même du SSE malgré stream:false → détecter et parser
+    if (rawText.trimStart().startsWith('data:')) {
+      // Parsing SSE de secours
+      let full = '', inTk = 0, outTk = 0;
+      for (const line of rawText.split('\n')) {
+        if (!line.startsWith('data: ')) continue;
+        const d = line.slice(6).trim();
+        if (d === '[DONE]') break;
+        try {
+          const j = JSON.parse(d);
+          const delta = j.choices?.[0]?.delta?.content ?? '';
+          if (delta) full += delta;
+          if (j.usage) { inTk = j.usage.prompt_tokens || 0; outTk = j.usage.completion_tokens || 0; }
+        } catch {}
+      }
+      if (!full) { onError?.('Réponse vide du modèle. Essaie un autre modèle.'); return; }
+      onDone?.({ text: full, inputTokens: inTk, outputTokens: outTk });
+      return;
+    }
+
+    // JSON standard
+    try {
+      const data = JSON.parse(rawText);
+      const text = extractContent(data.choices?.[0]?.message?.content);
+      const inTk  = data.usage?.prompt_tokens || 0;
+      const outTk = data.usage?.completion_tokens || 0;
+      // Contenu vide malgré des tokens : modèle en erreur silencieuse
+      if (!text && (inTk > 0 || outTk > 0)) {
+        const reason = data.choices?.[0]?.finish_reason || 'unknown';
+        onError?.(`Réponse vide (finish_reason: ${reason}). Essaie un autre modèle ou reformule ta question.`);
+        return;
+      }
+      if (!text) { onError?.('Réponse vide du modèle.'); return; }
+      onDone?.({ text, inputTokens: inTk, outputTokens: outTk });
+    } catch(e) {
+      onError?.('Impossible de lire la réponse : ' + e.message);
+    }
+    return;
+  }
+
+  // ── Mode desktop : streaming SSE ─────────────────────────────
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let full = '', inTk = 0, outTk = 0, buf = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop() ?? '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const d = line.slice(6).trim();
+        if (d === '[DONE]') { onDone?.({ text: full, inputTokens: inTk, outputTokens: outTk }); return; }
+        try {
+          const j = JSON.parse(d);
+          const delta = j.choices?.[0]?.delta?.content ?? '';
+          if (delta) { full += delta; onChunk?.(delta, full); }
+          if (j.usage) { inTk = j.usage.prompt_tokens || 0; outTk = j.usage.completion_tokens || 0; }
+        } catch {}
+      }
+    }
+  } catch(err) {
+    if (err.name === 'AbortError') return;
+    onError?.('Connexion interrompue.'); return;
+  }
+  onDone?.({ text: full, inputTokens: inTk, outputTokens: outTk });
+}
+
+// ─── Voice utilities ─────────────────────────────────────────
+function stripMarkdownForSpeech(text) {
+  return text
+    .replace(/```[\s\S]*?```/g, ' ') // code blocks → silence
+    .replace(/`[^`]+`/g, '')          // inline code
+    .replace(/#{1,6} /g, '')           // headings
+    .replace(/\*\*(.+?)\*\*/g, '$1')  // bold
+    .replace(/\*(.+?)\*/g, '$1')      // italic
+    .replace(/^[-•*] /gm, '')          // bullets
+    .replace(/^\d+\. /gm, '')          // numbered lists
+    .replace(/\[(.+?)\]\(.+?\)/g, '$1')// links
+    .replace(/\n{2,}/g, '. ')         // double newlines → pause
+    .replace(/\n/g, ' ')              // single newlines
+    .trim();
+}
+
+let _ttsActive = false;
+function textToSpeech(text, onEnd) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const clean = stripMarkdownForSpeech(text);
+  if (!clean) { onEnd?.(); return; }
+  const utter = new SpeechSynthesisUtterance(clean);
+  utter.lang = 'fr-FR';
+  utter.rate = 1.05;
+  utter.pitch = 1;
+  const trySpeak = () => {
+    const voices = window.speechSynthesis.getVoices();
+    const frVoice = voices.find(v => v.lang.startsWith('fr') && v.localService)
+                 || voices.find(v => v.lang.startsWith('fr'));
+    if (frVoice) utter.voice = frVoice;
+    utter.onend = () => { _ttsActive = false; onEnd?.(); };
+    utter.onerror = () => { _ttsActive = false; onEnd?.(); };
+    _ttsActive = true;
+    window.speechSynthesis.speak(utter);
+  };
+  if (window.speechSynthesis.getVoices().length) {
+    trySpeak();
+  } else {
+    // Voices not yet loaded (frequent on first call)
+    window.speechSynthesis.addEventListener('voiceschanged', trySpeak, { once: true });
+  }
+}
+function stopSpeech() {
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  _ttsActive = false;
+}
+
+function useVoiceInput(onResult) {
+  const [listening, setListening] = useState(false);
+  const [interimText, setInterimText] = useState('');
+  const recRef = useRef(null);
+  // Garde la dernière version du callback sans recréer l'instance SR
+  const onResultRef = useRef(onResult);
+  useEffect(() => { onResultRef.current = onResult; }, [onResult]);
+
+  const SR = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
+  const supported = !!SR;
+
+  const stop = useCallback(() => {
+    if (recRef.current) {
+      try { recRef.current.abort(); } catch {} // abort() = stop immédiat sans onend
+      recRef.current = null;
+    }
+    setListening(false);
+    setInterimText('');
+  }, []);
+
+  const start = useCallback(() => {
+    if (!SR) return;
+    // Nettoyer une éventuelle instance précédente sans déclencher ses callbacks
+    if (recRef.current) {
+      try { recRef.current.abort(); } catch {}
+      recRef.current = null;
+    }
+    const rec = new SR();
+    rec.lang = 'fr-FR';
+    rec.continuous = true;      // ← garde l'écoute ouverte → plus de re-demande de permission
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
+
+    rec.onstart  = () => setListening(true);
+    rec.onend    = () => {
+      // onend ne se déclenche qu'après abort() ou erreur réseau
+      recRef.current = null;
+      setListening(false);
+      setInterimText('');
+    };
+    rec.onerror  = (e) => {
+      if (e.error === 'aborted') return; // abort volontaire → ignorer
+      console.warn('[Voice] error:', e.error);
+      recRef.current = null;
+      setListening(false);
+      setInterimText('');
+    };
+    rec.onresult = (e) => {
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) {
+          if (t.trim()) onResultRef.current(t.trim());
+        } else {
+          interim += t;
+        }
+      }
+      setInterimText(interim);
+    };
+
+    recRef.current = rec;
+    try { rec.start(); } catch(err) {
+      console.warn('[Voice] start error:', err);
+      recRef.current = null;
+      setListening(false);
+    }
+  }, [SR]);
+
+  const toggle = useCallback(() => {
+    if (listening) stop(); else start();
+  }, [listening, start, stop]);
+
+  // Nettoyage au démontage
+  useEffect(() => () => { try { recRef.current?.abort(); } catch {} }, []);
+
+  return { listening, supported, toggle, interimText };
+}
+
+// ─── App State ───────────────────────────────────────────────
+const TABS = ['chat','code','design','zya','zelie'];
+function newConv(tabId, settings) {
+  const dm = settings?.defaultModels ?? DEFAULT_MODELS_PER_TAB;
+  return {
+    id: uuid(), tabId,
+    title: 'Nouvelle conversation',
+    messages: [],
+    model: dm[tabId] ?? DEFAULT_MODEL,
+    createdAt: Date.now(),
+    totalIn: 0, totalOut: 0, totalCost: 0,
+    pinned: false,
+  };
+}
+function initTab(pid, tabId, settings) {
+  const convs = loadConvs(pid, tabId);
+  const active = convs[convs.length - 1] || newConv(tabId, settings);
+  return { convs: convs.length ? convs : [active], activeId: active.id };
+}
+function buildState(pid) {
+  const settings = loadSettings();
+  const tabs = {};
+  TABS.forEach(t => { tabs[t] = initTab(pid, t, settings); });
+  return {
+    profile: pid, tab: 'chat', tabs,
+    settings,
+    monthCost: loadMonthCost(pid),
+    streaming: false,
+    showModelPicker: false, showSettings: false, showDashboard: false,
+    artifact: null, showArtifact: false,
+    showSearch: false, showCompare: false,
+  };
+}
+
+function reducer(state, action) {
+  switch (action.type) {
+    case 'SET_PROFILE':
+      if (!action.payload) return { ...state, profile: null, tab: 'chat', showPinEntry: false, pendingProfile: null };
+      return buildState(action.payload);
+    case 'SET_TAB': return { ...state, tab: action.payload, showModelPicker: false };
+    case 'SET_SETTINGS': return { ...state, settings: action.payload };
+    case 'SET_STREAMING': return { ...state, streaming: action.payload };
+    case 'TOGGLE_MODEL_PICKER': return { ...state, showModelPicker: !state.showModelPicker };
+    case 'CLOSE_MODEL_PICKER': return { ...state, showModelPicker: false };
+    case 'TOGGLE_SETTINGS': return { ...state, showSettings: !state.showSettings, showDashboard: false };
+    case 'TOGGLE_DASHBOARD': return { ...state, showDashboard: !state.showDashboard, showSettings: false };
+    case 'CLOSE_OVERLAYS': return { ...state, showSettings: false, showDashboard: false, showModelPicker: false, showSearch: false, showCompare: false };
+    case 'TOGGLE_SEARCH': return { ...state, showSearch: !state.showSearch };
+    case 'TOGGLE_COMPARE': return { ...state, showCompare: !state.showCompare };
+    case 'TOGGLE_PIN': {
+      const { tabId, convId } = action.payload;
+      const t = state.tabs[tabId];
+      return { ...state, tabs: { ...state.tabs, [tabId]: { ...t, convs: t.convs.map(c => c.id === convId ? { ...c, pinned: !c.pinned } : c) } } };
+    }
+    case 'SHOW_PIN_ENTRY': return { ...state, showPinEntry: true, pendingProfile: action.payload };
+    case 'HIDE_PIN_ENTRY': return { ...state, showPinEntry: false, pendingProfile: null };
+    case 'CONFIRM_PROFILE': return { ...buildState(action.payload), showPinEntry: false, pendingProfile: null };
+    case 'OPEN_ARTIFACT': return { ...state, artifact: action.payload, showArtifact: true };
+    case 'CLOSE_ARTIFACT': return { ...state, showArtifact: false };
+    case 'TOGGLE_ARTIFACT': return { ...state, showArtifact: !state.showArtifact };
+    case 'SET_MONTH_COST': return { ...state, monthCost: action.payload };
+    case 'MERGE_CLOUD_TABS': {
+      // Fusionne les conversations Firebase dans le state (Firebase = source de vérité)
+      const merged = { ...state.tabs };
+      Object.entries(action.payload).forEach(([tab, convs]) => {
+        merged[tab] = { convs, activeId: convs[convs.length-1]?.id || null };
+      });
+      return { ...state, tabs: merged };
+    }
+    case 'NEW_CONV': {
+      const { tabId } = action.payload;
+      const c = newConv(tabId, state.settings);
+      const t = state.tabs[tabId];
+      return { ...state, tabs: { ...state.tabs, [tabId]: { convs: [...t.convs, c], activeId: c.id } } };
+    }
+    case 'SELECT_CONV': {
+      const { tabId, convId } = action.payload;
+      return { ...state, tabs: { ...state.tabs, [tabId]: { ...state.tabs[tabId], activeId: convId } } };
+    }
+    case 'DELETE_CONV': {
+      const { tabId, convId } = action.payload;
+      const t = state.tabs[tabId];
+      const convs = t.convs.filter(c => c.id !== convId);
+      const fallback = convs[convs.length - 1];
+      const activeId = t.activeId === convId ? (fallback?.id || null) : t.activeId;
+      return { ...state, tabs: { ...state.tabs, [tabId]: { convs, activeId } } };
+    }
+    case 'SET_MODEL': {
+      const { tabId, model } = action.payload;
+      const t = state.tabs[tabId];
+      return {
+        ...state,
+        showModelPicker: false,
+        tabs: { ...state.tabs, [tabId]: { ...t, convs: t.convs.map(c => c.id === t.activeId ? { ...c, model } : c) } },
+      };
+    }
+    case 'ADD_MSG': {
+      const { tabId, msg } = action.payload;
+      const t = state.tabs[tabId];
+      return {
+        ...state,
+        tabs: {
+          ...state.tabs,
+          [tabId]: {
+            ...t,
+            convs: t.convs.map(c => {
+              if (c.id !== t.activeId) return c;
+              const messages = [...c.messages, msg];
+              const title = c.title === 'Nouvelle conversation' && c.messages.length === 0
+                ? (msg.content ? msg.content.slice(0, 42) + (msg.content.length > 42 ? '…' : '') : (msg.attachments?.[0]?.name || 'Conversation'))
+                : c.title;
+              return { ...c, messages, title };
+            }),
+          },
+        },
+      };
+    }
+    case 'UPDATE_ASSISTANT': {
+      const { tabId, content, inTk, outTk, done } = action.payload;
+      const t = state.tabs[tabId];
+      return {
+        ...state,
+        tabs: {
+          ...state.tabs,
+          [tabId]: {
+            ...t,
+            convs: t.convs.map(c => {
+              if (c.id !== t.activeId) return c;
+              const messages = c.messages.map((m, i) => {
+                if (i !== c.messages.length - 1 || m.role !== 'assistant') return m;
+                return { ...m, content, inTk, outTk, done };
+              });
+              const totalIn  = done ? c.totalIn  + inTk  : c.totalIn;
+              const totalOut = done ? c.totalOut + outTk  : c.totalOut;
+              const totalCost = done ? c.totalCost + estimateCost(c.model, inTk, outTk) : c.totalCost;
+              return { ...c, messages, totalIn, totalOut, totalCost };
+            }),
+          },
+        },
+      };
+    }
+    case 'EDIT_MESSAGE': {
+      const { tabId, msgId } = action.payload;
+      const t = state.tabs[tabId];
+      return { ...state, tabs: { ...state.tabs, [tabId]: { ...t, convs: t.convs.map(c => {
+        if (c.id !== t.activeId) return c;
+        const idx = c.messages.findIndex(m => m.id === msgId);
+        if (idx === -1) return c;
+        return { ...c, messages: c.messages.slice(0, idx) };
+      }) } } };
+    }
+    case 'REGENERATE': {
+      const { tabId } = action.payload;
+      const t = state.tabs[tabId];
+      return { ...state, tabs: { ...state.tabs, [tabId]: { ...t, convs: t.convs.map(c => {
+        if (c.id !== t.activeId) return c;
+        const messages = [...c.messages];
+        if (messages.length && messages[messages.length - 1].role === 'assistant') messages.pop();
+        return { ...c, messages };
+      }) } } };
+    }
+    case '_SET_CONV_MESSAGES': {
+      const { tabId, convId, messages } = action.payload;
+      const t = state.tabs[tabId];
+      return { ...state, tabs: { ...state.tabs, [tabId]: { ...t, convs: t.convs.map(c => c.id === convId ? { ...c, messages } : c) } } };
+    }
+    default: return state;
+  }
+}
+
+// ─── Context ─────────────────────────────────────────────────
+const Ctx = createContext(null);
+function useApp() { return useContext(Ctx); }
+
+function AppProvider({ children }) {
+  const [state, dispatch] = useReducer(reducer, null, () => ({
+    profile: null, tab: 'chat', tabs: {},
+    settings: loadSettings(), monthCost: 0,
+    streaming: false,
+    showModelPicker: false, showSettings: false, showDashboard: false,
+    showPinEntry: false, pendingProfile: null,
+    artifact: null, showArtifact: false,
+    showSearch: false, showCompare: false,
+  }));
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const h = (e) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      if (e.key === 'k') { e.preventDefault(); dispatch({ type: 'TOGGLE_MODEL_PICKER' }); }
+      if (e.key === 'n') { e.preventDefault(); dispatch({ type: 'NEW_CONV', payload: { tabId: null } }); }
+      if (e.key === ',') { e.preventDefault(); dispatch({ type: 'TOGGLE_SETTINGS' }); }
+      if (e.key === 'd') { e.preventDefault(); dispatch({ type: 'TOGGLE_DASHBOARD' }); }
+      if (e.key === 'f') { e.preventDefault(); dispatch({ type: 'TOGGLE_SEARCH' }); }
+      if (e.key === 'Escape') dispatch({ type: 'CLOSE_OVERLAYS' });
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, []);
+
+  // Persist convs (localStorage + Firebase)
+  useEffect(() => {
+    if (!state.profile) return;
+    TABS.forEach(t => {
+      if (!state.tabs[t]) return;
+      saveConvs(state.profile, t, state.tabs[t].convs);
+      cloudSaveLater(state.profile, t, state.tabs[t].convs);
+    });
+  }, [state.profile, state.tabs]);
+
+  // Charger depuis Firebase quand le profil change
+  useEffect(() => {
+    if (!state.profile) return;
+    let cancelled = false;
+    cloudLoadAll(state.profile).then(cloudData => {
+      if (cancelled || !cloudData) return;
+      dispatch({ type: 'MERGE_CLOUD_TABS', payload: cloudData });
+    });
+    return () => { cancelled = true; };
+  }, [state.profile]);
+
+  // Persist settings
+  useEffect(() => { saveSettings(state.settings); }, [state.settings]);
+
+  const sendMessage = useCallback(async ({ tabId, content, attachments = [], abortRef }) => {
+    const t = tabId || state.tab;
+    const hasContent = content?.trim() || attachments.length;
+    if (!hasContent || state.streaming) return;
+
+    // ── Kids content filter ──
+    const profile = getProfile(state.profile);
+    if (profile?.isKid && content?.trim() && !isKidsSafe(content)) {
+      const refusal = profile.age <= 9
+        ? '🌸 Oups, je préfère qu\'on parle d\'autre chose ! On joue à un jeu ou on raconte une histoire ? 😊'
+        : '✨ Ce sujet n\'est pas pour moi ! Tu as des devoirs ou quelque chose de sympa à explorer ? 😊';
+      dispatch({ type:'ADD_MSG', payload:{ tabId:t, msg:{ role:'user', content, attachments, id:uuid() } } });
+      dispatch({ type:'ADD_MSG', payload:{ tabId:t, msg:{ role:'assistant', content:refusal, id:uuid(), done:true, inTk:0, outTk:0 } } });
+      return;
+    }
+
+    // ── Daily limits ──
+    const pid = state.profile;
+    const limit = state.settings.dailyLimits?.[pid];
+    if (limit !== null && limit !== undefined) {
+      const dkey = 'daily_' + pid + '_' + dateKey();
+      const count = lsGet(dkey, 0);
+      if (count >= limit) {
+        dispatch({ type:'ADD_MSG', payload:{ tabId:t, msg:{ role:'user', content, attachments, id:uuid() } } });
+        dispatch({ type:'ADD_MSG', payload:{ tabId:t, msg:{ role:'assistant', content:`⏱️ Limite journalière atteinte (${limit} messages). Reviens demain !`, id:uuid(), done:true, inTk:0, outTk:0 } } });
+        return;
+      }
+      lsSet(dkey, count + 1);
+    }
+
+    dispatch({ type:'ADD_MSG', payload:{ tabId:t, msg:{ role:'user', content, attachments, id:uuid() } } });
+    dispatch({ type:'ADD_MSG', payload:{ tabId:t, msg:{ role:'assistant', content:'', id:uuid(), done:false } } });
+    dispatch({ type:'SET_STREAMING', payload:true });
+
+    const tab = state.tabs[t];
+    const conv = tab?.convs.find(c => c.id === tab.activeId);
+    if (!conv) { dispatch({ type:'SET_STREAMING', payload:false }); return; }
+
+    let sysPrompt = SYSTEM_PROMPTS[t] || SYSTEM_PROMPTS.chat;
+    // ── Socratic mode ──
+    if ((t === 'zya' || t === 'zelie') && state.settings.socraticMode?.[t]) {
+      sysPrompt += '\n\n[MODE SOCRATIQUE] Au lieu de donner directement les réponses, guide par des questions. Pose une question à la fois pour amener l\'élève à trouver par lui-même. Félicite les bonnes réponses.';
+    }
+    // ── Profile context ──
+    const profileCtx = state.settings.profileContext?.[pid];
+    if (profileCtx?.trim()) {
+      sysPrompt += '\n\n[CONTEXTE PERSONNEL]\n' + profileCtx.trim();
+    }
+    const apiMsgs = [
+      { role:'system', content: sysPrompt },
+      ...conv.messages.filter(m => m.content || m.attachments?.length).map(m => ({ role:m.role, content:buildMsgContent(m) })),
+      { role:'user', content: buildMsgContent({ content, attachments }) },
+    ];
+
+    const controller = new AbortController();
+    if (abortRef) abortRef.current = controller;
+
+    await streamChat({
+      apiKey: state.settings.apiKey,
+      model: conv.model,
+      messages: apiMsgs,
+      signal: controller.signal,
+      onChunk: (_d, full) => {
+        dispatch({ type:'UPDATE_ASSISTANT', payload:{ tabId:t, content:full, inTk:0, outTk:0, done:false } });
+      },
+      onDone: ({ text, inputTokens, outputTokens }) => {
+        dispatch({ type:'UPDATE_ASSISTANT', payload:{ tabId:t, content:text, inTk:inputTokens, outTk:outputTokens, done:true } });
+        dispatch({ type:'SET_STREAMING', payload:false });
+        const cost = estimateCost(conv.model, inputTokens, outputTokens);
+        dispatch({ type:'SET_MONTH_COST', payload: addMonthCost(state.profile, cost) });
+        appendCostLog({ ts:Date.now(), profile:state.profile, tab:t, model:conv.model, inputTokens, outputTokens, cost });
+      },
+      onError: errMsg => {
+        dispatch({ type:'UPDATE_ASSISTANT', payload:{ tabId:t, content:`⚠️ ${errMsg}`, inTk:0, outTk:0, done:true } });
+        dispatch({ type:'SET_STREAMING', payload:false });
+      },
+    });
+  }, [state.tab, state.tabs, state.streaming, state.settings.apiKey, state.profile]);
+
+  return <Ctx.Provider value={{ state, dispatch, sendMessage }}>{children}</Ctx.Provider>;
+}
+
+// ─── Markdown renderer ────────────────────────────────────────
+function parseBlocks(text) {
+  if (!text) return [];
+  const parts = [];
+  const re = /```(\w*)\n?([\s\S]*?)```/g;
+  let last = 0, m;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push({ type:'text', content: text.slice(last, m.index) });
+    parts.push({ type:'code', lang: m[1], content: m[2] });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push({ type:'text', content: text.slice(last) });
+  return parts;
+}
+
+function inlineMd(text) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code style="background:#f1eee5;padding:1px 4px;border-radius:3px;font-size:.9em">$1</code>')
+    .replace(/\n/g, '<br/>');
+}
+
+function TextBlock({ text }) {
+  const lines = text.split('\n');
+  const out = [];
+  let listItems = [];
+  const flush = () => {
+    if (!listItems.length) return;
+    out.push(<ul key={out.length} style={{ margin:'6px 0', paddingLeft:20 }}>
+      {listItems.map((it, i) => <li key={i} dangerouslySetInnerHTML={{ __html: inlineMd(it) }} style={{ marginBottom:2 }} />)}
+    </ul>);
+    listItems = [];
+  };
+  lines.forEach((line, i) => {
+    const hm = line.match(/^(#{1,3}) (.+)/);
+    if (hm) {
+      flush();
+      const sz = [20,17,15][hm[1].length - 1];
+      out.push(<div key={i} style={{ fontWeight:700, fontSize:sz, marginTop:hm[1].length===1?12:8, marginBottom:4 }}>{hm[2]}</div>);
+    } else if (line.match(/^[-•*] /)) {
+      listItems.push(line.replace(/^[-•*] /, ''));
+    } else if (line.match(/^\d+\. /)) {
+      listItems.push(line.replace(/^\d+\. /, ''));
+    } else {
+      flush();
+      if (line.trim()) out.push(<p key={i} style={{ margin:'4px 0' }} dangerouslySetInnerHTML={{ __html: inlineMd(line) }} />);
+    }
+  });
+  flush();
+  return <>{out}</>;
+}
+
+const DOWNLOADABLE_LANGS = { html:'text/html', svg:'image/svg+xml', css:'text/css', js:'text/javascript', jsx:'text/javascript', ts:'text/typescript', tsx:'text/typescript', json:'application/json', xml:'application/xml' };
+const RENDERABLE = ['html','svg'];
+const PRISM_LANG = { js:'javascript', jsx:'jsx', ts:'typescript', tsx:'tsx', py:'python', sh:'bash', bash:'bash', zsh:'bash', html:'markup', xml:'markup', svg:'markup', css:'css', json:'json', sql:'sql' };
+
+function CodeBlock({ lang, content, onOpenArtifact }) {
+  const [copied, setCopied] = useState(false);
+  const codeRef = useRef(null);
+  const l = (lang || '').toLowerCase();
+
+  useEffect(() => {
+    if (codeRef.current && window.Prism) {
+      codeRef.current.textContent = content;
+      codeRef.current.className = `language-${PRISM_LANG[l] || l}`;
+      window.Prism.highlightElement(codeRef.current);
+    }
+  }, [content, l]);
+
+  const copy = () => { navigator.clipboard.writeText(content); setCopied(true); setTimeout(() => setCopied(false), 1500); };
+  const download = () => {
+    const mime = DOWNLOADABLE_LANGS[l] || 'text/plain';
+    const blob = new Blob([content], { type: mime });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `ricard-design.${l || 'txt'}`;
+    a.click(); URL.revokeObjectURL(a.href);
+  };
+
+  return (
+    <div style={{ background:'#1e1e2e', borderRadius:8, overflow:'hidden', margin:'8px 0', border:'1px solid #333' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'6px 12px', background:'#2a2a3e', borderBottom:'1px solid #333' }}>
+        <span style={{ fontSize:11, color:'#888', fontFamily:'monospace' }}>{lang || 'code'}</span>
+        <div style={{ display:'flex', gap:5 }}>
+          {RENDERABLE.includes(l) && onOpenArtifact && (
+            <button onClick={() => onOpenArtifact({ lang: l, content })}
+              style={{ background:'none', border:'1px solid #5a5a8a', color:'#9b9bff', borderRadius:4, padding:'2px 8px', fontSize:11, cursor:'pointer' }}>
+              ↗ Aperçu
+            </button>
+          )}
+          {DOWNLOADABLE_LANGS[l] && (
+            <button onClick={download}
+              style={{ background:'none', border:'1px solid #444', color:'#6af', borderRadius:4, padding:'2px 8px', fontSize:11, cursor:'pointer' }}>
+              ⬇ .{l}
+            </button>
+          )}
+          <button onClick={copy}
+            style={{ background:'none', border:'1px solid #444', color: copied ? C.green : '#888', borderRadius:4, padding:'2px 8px', fontSize:11, cursor:'pointer' }}>
+            {copied ? '✓' : 'copier'}
+          </button>
+        </div>
+      </div>
+      <pre style={{ margin:0, padding:'12px 16px', fontSize:13, overflow:'auto', lineHeight:1.6, background:'transparent' }}>
+        <code ref={codeRef} className={`language-${PRISM_LANG[l] || l}`}>{content}</code>
+      </pre>
+    </div>
+  );
+}
+
+function MsgContent({ content, onOpenArtifact }) {
+  const parts = parseBlocks(content);
+  if (!parts.length) return <span style={{ opacity:.4, fontStyle:'italic' }}>…</span>;
+  return <div>{parts.map((p, i) => p.type === 'code'
+    ? <CodeBlock key={i} lang={p.lang} content={p.content} onOpenArtifact={onOpenArtifact} />
+    : <TextBlock key={i} text={p.content} />)}</div>;
+}
+
+// ─── PIN Entry ───────────────────────────────────────────────
+function PinEntry() {
+  const { state, dispatch } = useApp();
+  const [entered, setEntered] = useState('');
+  const [shake, setShake] = useState(false);
+
+  useEffect(() => { if (state.showPinEntry) setEntered(''); }, [state.showPinEntry]);
+
+  if (!state.showPinEntry) return null;
+
+  const profile = getProfile(state.pendingProfile);
+
+  const handleDigit = (d) => {
+    if (entered.length >= 4) return;
+    const next = entered + d;
+    setEntered(next);
+    if (next.length === 4) {
+      if (next === state.settings.adminPin) {
+        dispatch({ type:'CONFIRM_PROFILE', payload: state.pendingProfile });
+      } else {
+        setShake(true);
+        setTimeout(() => { setEntered(''); setShake(false); }, 700);
+      }
+    }
+  };
+
+  const DIGITS = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.65)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <div style={{ background:'white', borderRadius:24, padding:'32px 28px', width:300, textAlign:'center', border:`2.5px solid ${C.ink}`, boxShadow:'8px 10px 0 rgba(0,0,0,.2)' }}>
+        {/* Avatar */}
+        <div style={{ width:60, height:60, borderRadius:'50%', background: profile?.color || C.orange, border:`2px solid ${C.ink}`, margin:'0 auto 12px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:26, fontFamily:"'Kalam',cursive", fontWeight:700, color:'white' }}>{profile?.label}</div>
+        <div style={{ fontSize:18, fontWeight:700, marginBottom:2 }}>{profile?.name}</div>
+        <div style={{ fontSize:13, color:C.muted, marginBottom:24 }}>Code PIN requis 🔒</div>
+
+        {/* Dots */}
+        <div style={{ display:'flex', justifyContent:'center', gap:14, marginBottom:28, transform: shake ? 'translateX(0)' : 'none', animation: shake ? 'shakePin .6s ease' : 'none' }}>
+          {[0,1,2,3].map(i => (
+            <div key={i} style={{ width:16, height:16, borderRadius:'50%', background: shake ? C.red : (i < entered.length ? C.ink : C.shade), border:`2px solid ${shake ? C.red : (i < entered.length ? C.ink : C.faint)}`, transition:'background .15s,border-color .15s' }} />
+          ))}
+        </div>
+
+        {/* Numpad */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginBottom:16 }}>
+          {DIGITS.map((d, i) => (
+            <button key={i}
+              onClick={d === '⌫' ? () => setEntered(p => p.slice(0,-1)) : d ? () => handleDigit(d) : undefined}
+              disabled={!d}
+              style={{ padding:'15px 0', fontSize: d === '⌫' ? 18 : 22, fontWeight:600, background: d === '⌫' ? '#f1eee5' : 'white', border:`1.5px solid ${C.faint}`, borderRadius:12, cursor: d ? 'pointer' : 'default', opacity: d ? 1 : 0, color:C.ink, fontFamily:'Inter,sans-serif', transition:'background .1s', WebkitTapHighlightColor:'transparent' }}
+              onMouseEnter={e => { if(d) e.currentTarget.style.background='#f7f4ec'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = d === '⌫' ? '#f1eee5' : 'white'; }}>
+              {d}
+            </button>
+          ))}
+        </div>
+
+        <button onClick={() => dispatch({ type:'HIDE_PIN_ENTRY' })}
+          style={{ background:'none', border:'none', color:C.muted, fontSize:13, cursor:'pointer', padding:'4px 12px' }}>
+          Annuler
+        </button>
+      </div>
+
+      <style>{`@keyframes shakePin { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-8px)} 40%{transform:translateX(8px)} 60%{transform:translateX(-6px)} 80%{transform:translateX(6px)} }`}</style>
+    </div>
+  );
+}
+
+// ─── Profile Selector ────────────────────────────────────────
+function ProfileSelector() {
+  const { state, dispatch } = useApp();
+  const isMobile = useIsMobile();
+  const budgets = state.settings.budgets || {};
+  const totalBudget = Object.values(budgets).reduce((a,b) => a+b, 0);
+  const costs = PROFILES.reduce((a, p) => { a[p.id] = loadMonthCost(p.id); return a; }, {});
+  const totalSpent = Object.values(costs).reduce((a,b) => a+b, 0);
+
+  return (
+    <div style={{ minHeight:'100dvh', background:C.paper, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', fontFamily:'Inter,sans-serif', padding: isMobile ? '24px 16px' : 40 }}>
+      <div style={{ marginBottom: isMobile ? 28 : 48, textAlign:'center' }}>
+        <div style={{ fontFamily:"'Kalam',cursive", fontSize: isMobile ? 38 : 52, fontWeight:700, color:C.ink, letterSpacing:-1 }}>Ricard AI</div>
+        <div style={{ marginTop:4, fontSize: isMobile ? 14 : 16, color:C.muted }}>Qui utilise l'IA ce soir ?</div>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: isMobile ? 14 : 24, marginBottom: isMobile ? 28 : 48, width:'100%', maxWidth:700 }}>
+        {PROFILES.map(p => {
+          const spent = costs[p.id] || 0;
+          const budget = budgets[p.id] || 50;
+          const pct = Math.min(100, (spent / budget) * 100);
+          return (
+            <button key={p.id} onClick={() => {
+              const pin = state.settings.adminPin;
+              if (p.admin && pin) {
+                dispatch({ type:'SHOW_PIN_ENTRY', payload:p.id });
+              } else {
+                dispatch({ type:'SET_PROFILE', payload:p.id });
+              }
+            }}
+              style={{ background:'white', border:`2px solid ${C.ink}`, borderRadius:16, padding:'24px 16px', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:10, boxShadow:`3px 4px 0 ${C.ink}`, transition:'transform .1s,box-shadow .1s', position:'relative' }}
+              onMouseEnter={e => { e.currentTarget.style.transform='translateY(-2px)'; e.currentTarget.style.boxShadow=`3px 6px 0 ${C.ink}`; }}
+              onMouseLeave={e => { e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow=`3px 4px 0 ${C.ink}`; }}
+            >
+              {p.admin && state.settings.adminPin && (
+                <div style={{ position:'absolute', top:10, right:10, fontSize:14 }}>🔒</div>
+              )}
+              <div style={{ width:72, height:72, borderRadius:'50%', background:p.color, border:`2px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:30, fontFamily:"'Kalam',cursive", fontWeight:700 }}>
+                {p.label}
+              </div>
+              <div style={{ fontSize:18, fontWeight:700 }}>{p.name}</div>
+              {p.age && <div style={{ fontSize:11, color:C.muted, background:C.shade, padding:'2px 8px', borderRadius:999, border:`1px solid ${C.faint}` }}>{p.age} ans</div>}
+              <div style={{ width:'100%' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:C.muted, marginBottom:3 }}>
+                  <span>${spent.toFixed(2)}</span><span>/${budget}</span>
+                </div>
+                <div style={{ height:4, background:C.shade, borderRadius:999, overflow:'hidden', border:`1px solid ${C.faint}` }}>
+                  <div style={{ height:'100%', width:`${pct}%`, background: pct>80 ? C.red : p.color, borderRadius:999 }} />
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{ display:'flex', gap:24, fontSize:13, color:C.muted, borderTop:`1px dashed ${C.faint}`, paddingTop:20, width:'100%', maxWidth:700, justifyContent:'center' }}>
+        <span>Famille · ce mois</span>
+        <span style={{ fontWeight:600, color:C.ink }}>${totalSpent.toFixed(2)} / ${totalBudget}</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Sidebar ─────────────────────────────────────────────────
+const TAB_DEFS = [
+  { id:'chat',    label:'Chat',    icon:'💬' },
+  { id:'code',    label:'Code',    icon:'⌨️' },
+  { id:'design',  label:'Design',  icon:'🎨' },
+  { id:'zya',     label:'Zya',     icon:'✨', color:C.purple },
+  { id:'zelie',   label:'Zélie',   icon:'🌸', color:C.pink },
+  { id:'famille', label:'Famille', icon:'👨‍👩‍👧', color:C.teal },
+];
+
+function timeAgo(ts) {
+  const d = Date.now() - ts;
+  if (d < 60000) return 'maintenant';
+  if (d < 3600000) return `${Math.floor(d/60000)}min`;
+  if (d < 86400000) return `${Math.floor(d/3600000)}h`;
+  return `${Math.floor(d/86400000)}j`;
+}
+
+function Sidebar({ collapsed, onToggle }) {
+  const { state, dispatch } = useApp();
+  const profile = getProfile(state.profile);
+  const tabState = state.tabs[state.tab];
+  const convs = tabState?.convs || [];
+  const activeId = tabState?.activeId;
+  const budget = state.settings.budgets?.[state.profile] || 50;
+  const remaining = Math.max(0, budget - state.monthCost);
+  const overBudget = state.monthCost > budget * 0.8;
+
+  return (
+    <div style={{ width: collapsed ? 56 : 220, minWidth: collapsed ? 56 : 220, background:'#f3f0e8', borderRight:`1.5px solid ${C.ink}`, display:'flex', flexDirection:'column', overflow:'hidden', transition:'width .2s,min-width .2s', flexShrink:0 }}>
+      {/* Header */}
+      <div style={{ padding:'10px 10px', borderBottom:`1px dashed ${C.faint}`, display:'flex', alignItems:'center', gap:8, minHeight:52 }}>
+        <button onClick={() => dispatch({ type:'SET_PROFILE', payload:null })}
+          style={{ background: profile?.color || C.orange, border:`2px solid ${C.ink}`, borderRadius:'50%', width:32, height:32, flexShrink:0, cursor:'pointer', fontSize:14, fontFamily:"'Kalam',cursive", fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center' }}
+          title="Changer de profil">{profile?.label}</button>
+        {!collapsed && <>
+          <span style={{ fontFamily:"'Kalam',cursive", fontSize:16, fontWeight:700, flex:1 }}>Ricard AI</span>
+          <button onClick={onToggle} style={IB}>‹</button>
+        </>}
+        {collapsed && <button onClick={onToggle} style={{ ...IB, marginLeft:-4 }}>›</button>}
+      </div>
+
+      {/* Tabs */}
+      <div style={{ padding:'8px 6px', display:'flex', flexDirection:'column', gap:2 }}>
+        {TAB_DEFS.map(t => {
+          const active = state.tab === t.id;
+          return (
+            <button key={t.id} onClick={() => dispatch({ type:'SET_TAB', payload:t.id })}
+              style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', border: active ? `1.5px solid ${C.ink}` : '1.5px solid transparent', borderRadius:8, background: active ? 'white' : 'transparent', cursor:'pointer', textAlign:'left', width:'100%', boxShadow: active ? '2px 2px 0 rgba(0,0,0,.08)' : 'none' }}>
+              <span style={{ fontSize:16, lineHeight:1 }}>{t.icon}</span>
+              {!collapsed && <span style={{ fontSize:14, fontWeight: active ? 600 : 400, color: t.color || C.ink }}>{t.label}</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Conversations */}
+      {!collapsed && (
+        <div style={{ flex:1, overflow:'auto', padding:'0 6px' }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 4px 4px' }}>
+            <span style={{ fontSize:11, color:C.muted, textTransform:'uppercase', letterSpacing:.8 }}>récent</span>
+            <div style={{ display:'flex', gap:4 }}>
+              <button onClick={() => dispatch({ type:'TOGGLE_SEARCH' })}
+                style={{ background:'none', border:`1.5px solid ${C.faint}`, borderRadius:6, width:22, height:22, cursor:'pointer', fontSize:12, display:'flex', alignItems:'center', justifyContent:'center', color:C.muted, padding:0 }} title="Rechercher (Ctrl+F)">🔍</button>
+              <button onClick={() => dispatch({ type:'NEW_CONV', payload:{ tabId:state.tab } })}
+                style={{ background:'none', border:`1.5px solid ${C.faint}`, borderRadius:6, width:22, height:22, cursor:'pointer', fontSize:14, display:'flex', alignItems:'center', justifyContent:'center', color:C.muted, padding:0 }} title="Nouvelle conversation">+</button>
+            </div>
+          </div>
+          {(() => {
+            const sorted = convs.slice().sort((a, b) => {
+              if (a.pinned && !b.pinned) return -1;
+              if (!a.pinned && b.pinned) return 1;
+              return b.createdAt - a.createdAt;
+            });
+            return sorted.map(c => (
+              <button key={c.id} onClick={() => dispatch({ type:'SELECT_CONV', payload:{ tabId:state.tab, convId:c.id } })}
+                onContextMenu={e => { e.preventDefault(); dispatch({ type:'TOGGLE_PIN', payload:{ tabId:state.tab, convId:c.id } }); }}
+                style={{ display:'block', width:'100%', padding:'6px 8px', borderRadius:6, background: c.id===activeId ? 'white' : 'transparent', border: c.id===activeId ? `1px solid #e8e5dc` : '1px solid transparent', cursor:'pointer', textAlign:'left', marginBottom:2 }}
+                title="Clic droit pour épingler/désépingler">
+                <div style={{ fontSize:13, fontWeight: c.id===activeId ? 600 : 400, color:C.ink, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{c.pinned ? '📌 ' : ''}{c.title}</div>
+                <div style={{ fontSize:11, color:'#aaa', marginTop:1 }}>{timeAgo(c.createdAt)} · ${c.totalCost.toFixed(4)}</div>
+              </button>
+            ));
+          })()}
+        </div>
+      )}
+
+      {/* Bottom */}
+      <div style={{ padding:'10px 8px', borderTop:`1px dashed ${C.faint}`, display:'flex', alignItems:'center', gap:8 }}>
+        <button onClick={() => dispatch({ type:'TOGGLE_SETTINGS' })} style={{ ...IB, fontSize:16 }} title="Réglages">⚙️</button>
+        {!collapsed && <>
+          <button onClick={() => dispatch({ type:'TOGGLE_DASHBOARD' })} style={{ background:'none', border:'none', cursor:'pointer', fontSize:12, color:C.muted, flex:1, textAlign:'left', padding:0 }}>
+            ${state.monthCost.toFixed(2)} ce mois
+          </button>
+          <span style={{ fontSize:11, background: overBudget ? C.red : C.green, color:'white', padding:'2px 6px', borderRadius:999 }}>
+            ${remaining.toFixed(0)} restants
+          </span>
+        </>}
+      </div>
+    </div>
+  );
+}
+const IB = { background:'none', border:'none', cursor:'pointer', padding:4, borderRadius:6, color:C.muted, fontSize:14, display:'flex', alignItems:'center', justifyContent:'center' };
+
+// ─── Chat Header ─────────────────────────────────────────────
+function ChatHeader({ tabId, title, icon, accentColor }) {
+  const { state, dispatch, sendMessage } = useApp();
+  const isMobile = useIsMobile();
+  const t = state.tabs[tabId];
+  const conv = t?.convs.find(c => c.id === t.activeId);
+  const model = getModel(conv?.model);
+  const totalTk = (conv?.totalIn || 0) + (conv?.totalOut || 0);
+  const msgs = conv?.messages || [];
+
+  const handleSummarize = async () => {
+    if (state.streaming || msgs.length <= 12) return;
+    const toSummarize = msgs.slice(0, msgs.length - 3);
+    const keep = msgs.slice(msgs.length - 3);
+    const apiMsgs = [
+      { role:'system', content: 'Résume cette conversation en 3-4 phrases concises en français.' },
+      ...toSummarize.filter(m => m.content).map(m => ({ role: m.role, content: m.content })),
+    ];
+    dispatch({ type:'SET_STREAMING', payload:true });
+    let summary = '';
+    await streamChat({
+      apiKey: state.settings.apiKey,
+      model: conv.model,
+      messages: apiMsgs,
+      onChunk: (_d, full) => { summary = full; },
+      onDone: ({ text }) => {
+        summary = text;
+        // Replace messages: summary bubble + keep last 3
+        const summaryMsg = { role:'assistant', content:'📋 RÉSUMÉ: ' + summary, isSummary:true, done:true, id:uuid(), inTk:0, outTk:0 };
+        const newMsgs = [summaryMsg, ...keep];
+        // Dispatch via a synthetic approach: update active conv messages
+        dispatch({ type:'_SET_CONV_MESSAGES', payload:{ tabId, convId: conv.id, messages: newMsgs } });
+        dispatch({ type:'SET_STREAMING', payload:false });
+      },
+      onError: () => { dispatch({ type:'SET_STREAMING', payload:false }); },
+    });
+  };
+
+  return (
+    <div style={{ padding: isMobile ? '8px 12px' : '10px 20px', borderBottom:`1.5px solid #e8e5dc`, background:'white', display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, minHeight:52, flexShrink:0 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0, flex:1 }}>
+        {isMobile && (
+          <button onClick={() => dispatch({ type:'SET_PROFILE', payload:null })}
+            style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, padding:'0 2px', flexShrink:0, color:C.muted }}>☰</button>
+        )}
+        {icon && <span style={{ fontSize:18, flexShrink:0 }}>{icon}</span>}
+        <span style={{ fontSize: isMobile ? 14 : 16, fontWeight:600, color: accentColor || C.ink, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth: isMobile ? 130 : 280 }}>
+          {conv?.title !== 'Nouvelle conversation' ? conv?.title : title}
+        </span>
+      </div>
+      <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
+        {(totalTk > 0 || state.streaming) && !isMobile && (
+          <div style={{ display:'flex', alignItems:'center', gap:6, background:'#f7f4ec', border:`1px solid #e8e5dc`, borderRadius:20, padding:'3px 10px', fontSize:12 }}>
+            {state.streaming && <span className="streaming-dot" />}
+            <span style={{ color:C.muted }}>{(totalTk/1000).toFixed(1)}k tk</span>
+            <span style={{ color:'#bbb' }}>·</span>
+            <span style={{ fontWeight:600, color:'#555' }}>${(conv?.totalCost || 0).toFixed(4)}</span>
+          </div>
+        )}
+        {state.streaming && isMobile && <span className="streaming-dot" />}
+        {msgs.length > 12 && !isMobile && !state.streaming && (
+          <button onClick={handleSummarize} title="Condenser la conversation"
+            style={{ background:'#f7f4ec', border:`1px solid #e8e5dc`, borderRadius:20, padding:'3px 10px', fontSize:11, cursor:'pointer', color:'#555' }}>
+            🗜 Condenser
+          </button>
+        )}
+        {!isMobile && (
+          <button onClick={() => dispatch({ type:'TOGGLE_COMPARE' })} title="Comparer deux modèles"
+            style={{ background:'#f7f4ec', border:`1px solid #e8e5dc`, borderRadius:20, padding:'3px 10px', fontSize:11, cursor:'pointer', color:'#555' }}>
+            ⚡
+          </button>
+        )}
+        {model && (
+          <button onClick={() => dispatch({ type:'TOGGLE_MODEL_PICKER' })}
+            style={{ background:'#f7f4ec', border:`1px solid #e8e5dc`, borderRadius:20, padding:'3px 10px', fontSize:11, cursor:'pointer', color:'#555', display:'flex', alignItems:'center', gap:4, maxWidth: isMobile ? 110 : 'none', overflow:'hidden' }}>
+            <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{isMobile ? model.name.split(' ').slice(-1)[0] : model.name}</span>
+            <span style={{ color:'#aaa', fontSize:10, flexShrink:0 }}>▾</span>
+          </button>
+        )}
+        <button onClick={() => dispatch({ type:'NEW_CONV', payload:{ tabId } })}
+          style={{ background:'none', border:`1px solid ${C.faint}`, borderRadius:6, width:28, height:28, cursor:'pointer', color:C.muted, fontSize:16, display:'flex', alignItems:'center', justifyContent:'center', padding:0, flexShrink:0 }} title="Nouvelle conversation">+</button>
+        {isMobile && (
+          <button onClick={() => dispatch({ type:'TOGGLE_SETTINGS' })}
+            style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, padding:'0 2px', color:C.muted }}>⚙️</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Chat Thread ──────────────────────────────────────────────
+function ChatThread({ tabId }) {
+  const { state, dispatch, sendMessage } = useApp();
+  const isMobile = useIsMobile();
+  const [hoveredId, setHoveredId] = useState(null);
+  const [speakingId, setSpeakingId] = useState(null);
+  const ref = useRef(null);
+
+  const handleSpeak = useCallback((msg) => {
+    if (speakingId === msg.id) {
+      stopSpeech();
+      setSpeakingId(null);
+    } else {
+      stopSpeech();
+      setSpeakingId(msg.id);
+      textToSpeech(msg.content, () => setSpeakingId(null));
+    }
+  }, [speakingId]);
+
+  // Stop speech when tab changes or messages update heavily
+  useEffect(() => () => stopSpeech(), [tabId]);
+  const t = state.tabs[tabId];
+  const conv = t?.convs.find(c => c.id === t.activeId);
+  const messages = conv?.messages || [];
+
+  useEffect(() => { if (ref.current) ref.current.scrollTop = ref.current.scrollHeight; }, [messages]);
+
+  const openArtifact = useCallback((artifact) => dispatch({ type:'OPEN_ARTIFACT', payload: artifact }), [dispatch]);
+
+  const handleEdit = (msg) => {
+    dispatch({ type:'EDIT_MESSAGE', payload:{ tabId, msgId: msg.id } });
+    window.dispatchEvent(new CustomEvent('ricard-edit', { detail:{ tabId, content: msg.content } }));
+  };
+
+  const handleRegenerate = () => {
+    if (state.streaming) return;
+    const lastUser = [...messages].reverse().find(m => m.role === 'user');
+    if (!lastUser) return;
+    dispatch({ type:'REGENERATE', payload:{ tabId } });
+    setTimeout(() => sendMessage({ tabId, content: lastUser.content, attachments: lastUser.attachments || [] }), 50);
+  };
+
+  const exportMd = () => {
+    const lines = [`# ${conv?.title || 'Conversation'}\n`];
+    messages.forEach(m => lines.push(`\n**${m.role === 'user' ? 'Vous' : 'Ricard AI'}**\n\n${m.content}\n`));
+    const blob = new Blob([lines.join('\n')], { type:'text/markdown' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `${(conv?.title || 'conv').slice(0,40)}.md`; a.click(); URL.revokeObjectURL(a.href);
+  };
+
+  if (!messages.length) return null;
+
+  return (
+    <div ref={ref} className="scroll-y" style={{ flex:1, minHeight:0, padding: isMobile ? '12px 10px' : '20px 24px', display:'flex', flexDirection:'column', gap:12 }}>
+      {messages.map((msg, idx) => {
+        const isLastDone = idx === messages.length - 1 && msg.role === 'assistant' && msg.done;
+        return (
+          <div key={msg.id}
+            onMouseEnter={() => setHoveredId(msg.id)}
+            onMouseLeave={() => setHoveredId(null)}
+            style={{ display:'flex', justifyContent: msg.role==='user' ? 'flex-end' : 'flex-start', gap:10, alignItems:'flex-start' }}>
+            {msg.role === 'assistant' && (
+              <div style={{ width:28, height:28, borderRadius:'50%', background:C.blue, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, color:'white', fontFamily:"'Kalam',cursive", fontWeight:700, marginTop:2 }}>R</div>
+            )}
+            <div style={{ maxWidth: isMobile ? '88%' : '72%' }}>
+              <div style={{ background: msg.role==='user' ? C.yellow : 'white', border:`1.5px solid ${C.ink}`, borderRadius: msg.role==='user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px', padding:'10px 14px', fontSize:14, lineHeight:1.5, boxShadow:'2px 2px 0 rgba(0,0,0,.06)' }}>
+                {msg.role === 'user' ? (
+                  <div>
+                    {msg.attachments?.length > 0 && (
+                      <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom: msg.content ? 8 : 0 }}>
+                        {msg.attachments.map(att => att.type === 'image' ? (
+                          <img key={att.id} src={att.preview} alt={att.name}
+                            style={{ maxWidth: isMobile ? 160 : 220, maxHeight:160, borderRadius:8, objectFit:'cover', border:`1px solid rgba(0,0,0,.1)`, display:'block' }} />
+                        ) : (
+                          <div key={att.id} style={{ background:'rgba(255,255,255,.6)', border:`1px solid rgba(0,0,0,.12)`, borderRadius:8, padding:'6px 10px', fontSize:12, display:'flex', alignItems:'center', gap:6 }}>
+                            <span style={{ fontSize:18 }}>📄</span>
+                            <span style={{ maxWidth:120, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{att.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {msg.content && <div style={{ whiteSpace:'pre-wrap' }}>{msg.content}</div>}
+                  </div>
+                ) : <MsgContent content={msg.content} onOpenArtifact={openArtifact} />}
+              </div>
+              <div style={{ display:'flex', gap:6, marginTop:4, fontSize:11, color:'#aaa', paddingLeft:4, alignItems:'center', minHeight:18 }}>
+                {msg.role === 'assistant' && msg.done && (msg.inTk || msg.outTk) && (
+                  <><span>{((msg.inTk||0)+(msg.outTk||0)).toLocaleString()} tk</span><span>·</span><span>${estimateCost(conv?.model,msg.inTk||0,msg.outTk||0).toFixed(5)}</span></>
+                )}
+                {msg.role === 'assistant' && !msg.done && (
+                  <><span className="streaming-dot" style={{ width:6, height:6 }} /><span>en cours…</span></>
+                )}
+                {/* 🔊 TTS button — always visible on mobile for assistant, hover on desktop */}
+                {msg.role === 'assistant' && msg.done && msg.content && (
+                  <button
+                    onClick={() => handleSpeak(msg)}
+                    title={speakingId === msg.id ? 'Arrêter la lecture' : 'Lire à voix haute'}
+                    style={{ ...ACT_BTN, marginLeft: (msg.inTk || msg.outTk) ? 4 : 'auto', opacity: isMobile ? 1 : (hoveredId === msg.id ? 1 : 0), transition:'opacity .15s', padding:'1px 6px', background: speakingId === msg.id ? '#eef3fd' : 'transparent', borderColor: speakingId === msg.id ? C.blue : '#e0ddd4', color: speakingId === msg.id ? C.blue : '#888' }}>
+                    {speakingId === msg.id
+                      ? <span className="speaking-wave"><span/><span/><span/></span>
+                      : '🔊'}
+                  </button>
+                )}
+                {hoveredId === msg.id && msg.done && !state.streaming && (
+                  <div style={{ display:'flex', gap:4, marginLeft:'auto' }}>
+                    <button onClick={() => navigator.clipboard.writeText(msg.content)}
+                      style={ACT_BTN}>copier</button>
+                    {msg.role === 'user' && (
+                      <button onClick={() => handleEdit(msg)} style={ACT_BTN}>✏️ modifier</button>
+                    )}
+                    {isLastDone && (
+                      <><button onClick={handleRegenerate} style={ACT_BTN}>↺ régénérer</button>
+                      <button onClick={exportMd} style={ACT_BTN}>⬇ .md</button></>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+const ACT_BTN = { background:'none', border:'1px solid #e0ddd4', borderRadius:4, padding:'1px 7px', fontSize:11, cursor:'pointer', color:'#888', fontFamily:'inherit' };
+
+// ─── Input Area ───────────────────────────────────────────────
+function InputArea({ tabId, placeholder }) {
+  const { state, dispatch, sendMessage } = useApp();
+  const isMobile = useIsMobile();
+  const [text, setText] = useState('');
+  const [attachments, setAttachments] = useState([]);
+  const taRef = useRef(null);
+  const abortRef = useRef(null);
+  const fileRef = useRef(null);
+
+  // ── Voice input ──
+  const onVoiceResult = useCallback((transcript) => {
+    setText(prev => (prev ? prev + ' ' : '') + transcript);
+    setTimeout(() => {
+      if (taRef.current) {
+        taRef.current.style.height = 'auto';
+        taRef.current.style.height = Math.min(taRef.current.scrollHeight, 160) + 'px';
+      }
+    }, 0);
+  }, []);
+  const { listening, supported: voiceSupported, toggle: toggleVoice, interimText } = useVoiceInput(onVoiceResult);
+  const t = state.tabs[tabId];
+  const conv = t?.convs.find(c => c.id === t.activeId);
+  const model = getModel(conv?.model);
+  const hasKey = !!state.settings.apiKey;
+
+  // Listen for edit events from ChatThread
+  useEffect(() => {
+    const h = (e) => {
+      if (e.detail.tabId !== tabId) return;
+      setText(e.detail.content);
+      if (taRef.current) {
+        taRef.current.style.height = 'auto';
+        taRef.current.style.height = Math.min(taRef.current.scrollHeight, 160) + 'px';
+        taRef.current.focus();
+      }
+    };
+    window.addEventListener('ricard-edit', h);
+    return () => window.removeEventListener('ricard-edit', h);
+  }, [tabId]);
+
+  // Context window %
+  const ctxLength = getModel(conv?.model)?.ctx || '?';
+  const usedTk = (conv?.totalIn || 0) + (conv?.totalOut || 0);
+  const maxTk = typeof ctxLength === 'string' && ctxLength.endsWith('k') ? parseInt(ctxLength) * 1000 : (ctxLength.endsWith?.('M') ? parseInt(ctxLength) * 1000000 : null);
+  const ctxPct = maxTk ? Math.min(100, Math.round(usedTk / maxTk * 100)) : null;
+
+
+  const handleFiles = (e) => {
+    Array.from(e.target.files || []).forEach(file => {
+      if (file.size > 12 * 1024 * 1024) { alert(`${file.name} dépasse 12 Mo`); return; }
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const dataUrl = ev.target.result;
+        setAttachments(prev => [...prev, {
+          id: uuid(),
+          name: file.name,
+          type: file.type.startsWith('image/') ? 'image' : 'pdf',
+          mimeType: file.type,
+          data: dataUrl.split(',')[1],
+          preview: file.type.startsWith('image/') ? dataUrl : null,
+          size: file.size,
+        }]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+  const removeAttachment = (id) => setAttachments(prev => prev.filter(a => a.id !== id));
+
+  const submit = useCallback(() => {
+    if ((!text.trim() && !attachments.length) || state.streaming) return;
+    if (!hasKey) { dispatch({ type:'TOGGLE_SETTINGS' }); return; }
+    sendMessage({ tabId, content: text.trim(), attachments, abortRef });
+    setText('');
+    setAttachments([]);
+    if (taRef.current) taRef.current.style.height = 'auto';
+  }, [text, attachments, state.streaming, hasKey, tabId, sendMessage, dispatch]);
+
+  const onKey = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } };
+  const onInput = e => { setText(e.target.value); e.target.style.height='auto'; e.target.style.height = Math.min(e.target.scrollHeight,160)+'px'; };
+
+  return (
+    <div style={{ padding: isMobile ? '8px 10px' : '12px 16px', borderTop:`1.5px solid #e8e5dc`, background:'white', flexShrink:0 }}>
+      {!hasKey && (
+        <div style={{ marginBottom:8, padding:'8px 12px', background:'#fff5e6', border:`1px solid ${C.orange}`, borderRadius:8, fontSize:12, color:'#c07030', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <span>Clé API OpenRouter requise pour envoyer des messages.</span>
+          <button onClick={() => dispatch({ type:'TOGGLE_SETTINGS' })} style={{ background:C.orange, border:'none', borderRadius:6, color:'white', padding:'3px 10px', fontSize:12, cursor:'pointer', fontWeight:600 }}>Configurer →</button>
+        </div>
+      )}
+      {/* Hidden file input */}
+      <input ref={fileRef} type="file" accept="image/*,.pdf" multiple style={{ display:'none' }} onChange={handleFiles} />
+
+      <div style={{ border:`2px solid ${C.ink}`, borderRadius:12, background:C.paper, overflow:'hidden', boxShadow:'2px 3px 0 rgba(0,0,0,.06)' }}>
+        {/* Attachment previews */}
+        {attachments.length > 0 && (
+          <div style={{ display:'flex', gap:6, padding:'8px 10px 0', flexWrap:'wrap' }}>
+            {attachments.map(att => (
+              <div key={att.id} style={{ position:'relative', borderRadius:8, overflow:'hidden', border:`1.5px solid ${C.faint}`, flexShrink:0 }}>
+                {att.type === 'image' ? (
+                  <img src={att.preview} alt={att.name} style={{ width:60, height:60, objectFit:'cover', display:'block' }} />
+                ) : (
+                  <div style={{ width:60, height:60, background:'#f1eee5', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2, padding:4 }}>
+                    <span style={{ fontSize:22 }}>📄</span>
+                    <span style={{ fontSize:8, color:C.muted, textAlign:'center', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', width:52 }}>{att.name}</span>
+                  </div>
+                )}
+                <button onClick={() => removeAttachment(att.id)}
+                  style={{ position:'absolute', top:2, right:2, background:'rgba(0,0,0,.55)', border:'none', borderRadius:'50%', width:16, height:16, cursor:'pointer', color:'white', fontSize:11, display:'flex', alignItems:'center', justifyContent:'center', padding:0, lineHeight:1 }}>×</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <textarea ref={taRef} value={text} onChange={onInput} onKeyDown={onKey} placeholder={listening ? '🎤 En écoute… parlez maintenant' : (placeholder || 'Écris ton message… (Entrée pour envoyer)')} disabled={state.streaming} rows={1}
+          style={{ width:'100%', padding:'12px 14px', border:'none', outline:'none', resize:'none', fontFamily:'Inter,sans-serif', fontSize:14, lineHeight:1.5, background:'transparent', color:C.ink, minHeight:44, boxSizing:'border-box' }} />
+        {interimText && (
+          <div style={{ padding:'0 14px 8px', fontSize:13, color:'#aaa', fontStyle:'italic', lineHeight:1.4 }}>
+            <span style={{ opacity:.7 }}>🎤 </span>{interimText}…
+          </div>
+        )}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'6px 10px 8px', gap:8 }}>
+          <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+            {/* Attach button */}
+            <button onClick={() => fileRef.current?.click()} title="Joindre image ou PDF"
+              style={{ background: attachments.length ? C.blue : '#f1eee5', border:`1px solid ${attachments.length ? C.blue : C.faint}`, borderRadius:20, padding:'3px 10px', fontSize:14, cursor:'pointer', color: attachments.length ? 'white' : '#555', display:'flex', alignItems:'center', gap:3, flexShrink:0 }}>
+              📎{attachments.length > 0 && <span style={{ fontSize:11, fontWeight:700 }}>{attachments.length}</span>}
+            </button>
+            {/* Mic button */}
+            {voiceSupported && (
+              <button
+                onClick={toggleVoice}
+                className={listening ? 'mic-active' : ''}
+                title={listening ? 'Arrêter la reconnaissance vocale' : 'Parler'}
+                style={{ background: listening ? C.red : '#f1eee5', border:`1px solid ${listening ? C.red : C.faint}`, borderRadius:'50%', width:32, height:32, cursor:'pointer', color: listening ? 'white' : '#888', display:'flex', alignItems:'center', justifyContent:'center', fontSize:15, flexShrink:0, transition:'background .2s,border-color .2s' }}>
+                🎤
+              </button>
+            )}
+            <button onClick={() => dispatch({ type:'TOGGLE_MODEL_PICKER' })}
+              style={{ background:'#f1eee5', border:`1px solid ${C.faint}`, borderRadius:20, padding:'3px 10px', fontSize:12, cursor:'pointer', display:'flex', alignItems:'center', gap:4, color:'#555' }}>
+              {model?.name} <span style={{ color:'#aaa', fontSize:10 }}>▾</span>
+            </button>
+            {model?.inCost && !isMobile ? <span style={{ fontSize:11, color:'#aaa' }}>${model.inCost}/M</span> : null}
+          </div>
+          <div style={{ display:'flex', gap:6 }}>
+            {state.streaming && (
+              <button onClick={() => { abortRef.current?.abort(); dispatch({ type:'SET_STREAMING', payload:false }); }}
+                style={{ background:C.red, border:'none', borderRadius:8, color:'white', padding:'6px 12px', fontSize:13, cursor:'pointer', fontWeight:600 }}>■ Stop</button>
+            )}
+            <button onClick={submit} disabled={(!text.trim() && !attachments.length) || state.streaming}
+              style={{ background: (text.trim() || attachments.length) && !state.streaming ? C.ink : C.faint, border:'none', borderRadius:8, color:'white', width:36, height:36, cursor: (text.trim() || attachments.length) && !state.streaming ? 'pointer' : 'not-allowed', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center', transition:'background .15s' }}>↑</button>
+          </div>
+        </div>
+      </div>
+      {ctxPct !== null && (
+        <div style={{ marginTop:6, display:'flex', alignItems:'center', gap:8 }}>
+          <div style={{ flex:1, height:3, background:'#e8e5dc', borderRadius:999, overflow:'hidden' }}>
+            <div style={{ height:'100%', width:`${ctxPct}%`, background: ctxPct>80 ? C.red : ctxPct>50 ? C.orange : C.green, borderRadius:999, transition:'width .3s' }} />
+          </div>
+          <span style={{ fontSize:10, color:'#aaa', flexShrink:0 }}>{ctxPct}% ctx · {((usedTk)/1000).toFixed(1)}k/{ctxLength}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Empty State ──────────────────────────────────────────────
+function EmptyState({ tabId, title, suggestions }) {
+  const { sendMessage } = useApp();
+  const isMobile = useIsMobile();
+  const shown = isMobile ? suggestions.slice(0, 4) : suggestions;
+  return (
+    <div className="scroll-y" style={{ flex:1, minHeight:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent: isMobile ? 'flex-start' : 'center', padding: isMobile ? '28px 14px 16px' : '32px 40px', gap: isMobile ? 16 : 24 }}>
+      <div style={{ fontSize: isMobile ? 17 : 22, fontWeight:700, color:C.ink, textAlign:'center', fontFamily:"'Kalam',cursive", maxWidth:500, lineHeight:1.3 }}>{title}</div>
+      <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(3,1fr)', gap: isMobile ? 8 : 10, width:'100%', maxWidth: isMobile ? '100%' : 640 }}>
+        {shown.map(s => (
+          <button key={s} onClick={() => sendMessage({ tabId, content: s })}
+            style={{ background:'white', border:`1.5px solid #e8e5dc`, borderRadius:10, padding: isMobile ? '10px 10px' : '10px 12px', cursor:'pointer', fontSize: isMobile ? 12 : 13, textAlign:'left', color:'#555', boxShadow:'2px 2px 0 rgba(0,0,0,.04)', lineHeight:1.4 }}
+            onMouseEnter={e => { e.currentTarget.style.background=C.paper; }}
+            onMouseLeave={e => { e.currentTarget.style.background='white'; }}>
+            {s}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Tabs ─────────────────────────────────────────────────────
+function ChatTab() {
+  const { state } = useApp();
+  const t = state.tabs['chat']; const conv = t?.convs.find(c => c.id === t.activeId);
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', minHeight:0 }}>
+      <ChatHeader tabId="chat" title="Chat" icon="💬" />
+      {!conv?.messages?.length
+        ? <EmptyState tabId="chat" title="Bonjour ! Que faisons-nous aujourd'hui ?" suggestions={['📝 Aide-moi à brainstormer','🛠️ Debug mon code','📊 Analyse ce texte','✍️ Améliore ma rédaction','🌐 Traduis ce passage','💡 Explique ce concept']} />
+        : <ChatThread tabId="chat" />}
+      <InputArea tabId="chat" placeholder="Écris ton message… (Entrée pour envoyer)" />
+    </div>
+  );
+}
+
+function CodeTab() {
+  const { state } = useApp();
+  const t = state.tabs['code']; const conv = t?.convs.find(c => c.id === t.activeId);
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', minHeight:0, background:'#fafaf6' }}>
+      <ChatHeader tabId="code" title="Code" icon="⌨️" />
+      {!conv?.messages?.length
+        ? <EmptyState tabId="code" title="Mode Code — colle du code, pose des questions" suggestions={['🐛 Debug ce code','✨ Refactorise cette fonction','📝 Explique ce snippet','🧪 Écris des tests unitaires','⚡ Optimise les performances','🔒 Trouve les failles de sécurité']} />
+        : <ChatThread tabId="code" />}
+      <InputArea tabId="code" placeholder="Colle du code ou pose une question technique…" />
+    </div>
+  );
+}
+
+function DesignTab() {
+  const { state, dispatch } = useApp();
+  const [showPreview, setShowPreview] = useState(false);
+  const t = state.tabs['design'];
+  const conv = t?.convs.find(c => c.id === t.activeId);
+
+  const previewCode = useMemo(() => {
+    if (!conv?.messages) return null;
+    for (let i = conv.messages.length - 1; i >= 0; i--) {
+      const msg = conv.messages[i];
+      if (msg.role !== 'assistant' || !msg.done) continue;
+      const blocks = parseBlocks(msg.content);
+      for (let j = blocks.length - 1; j >= 0; j--) {
+        const b = blocks[j];
+        const l = (b.lang || '').toLowerCase();
+        if (b.type === 'code' && (l === 'html' || l === 'svg')) return { lang: l, content: b.content };
+      }
+    }
+    return null;
+  }, [conv?.messages]);
+
+  const previewSrc = previewCode
+    ? (previewCode.lang === 'svg'
+        ? `<!DOCTYPE html><html><body style="margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f8f8f8">${previewCode.content}</body></html>`
+        : previewCode.content)
+    : null;
+
+  const downloadPreview = () => {
+    if (!previewCode) return;
+    const mime = previewCode.lang === 'svg' ? 'image/svg+xml' : 'text/html';
+    const blob = new Blob([previewCode.content], { type: mime });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `design.${previewCode.lang}`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', minHeight:0 }}>
+      <div style={{ padding:'10px 20px', borderBottom:'1.5px solid #e8e5dc', background:'white', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, minHeight:52, flexShrink:0 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
+          <span style={{ fontSize:18 }}>🎨</span>
+          <span style={{ fontSize:16, fontWeight:600, color:C.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:260 }}>
+            {conv?.title !== 'Nouvelle conversation' ? conv?.title : 'Design'}
+          </span>
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          {previewCode && (
+            <button onClick={() => setShowPreview(v => !v)}
+              style={{ background: showPreview ? C.teal : '#f7f4ec', color: showPreview ? 'white' : '#555', border: showPreview ? 'none' : '1px solid #e8e5dc', borderRadius:20, padding:'4px 12px', fontSize:12, cursor:'pointer', fontWeight:600 }}>
+              {showPreview ? '💬 Chat' : '👁 Aperçu'}
+            </button>
+          )}
+          {showPreview && previewCode && (
+            <button onClick={downloadPreview}
+              style={{ background:C.ink, border:'none', borderRadius:20, padding:'4px 12px', fontSize:12, cursor:'pointer', color:'white', fontWeight:600 }}>
+              ⬇ .{previewCode.lang}
+            </button>
+          )}
+          <button onClick={() => { dispatch({ type:'NEW_CONV', payload:{ tabId:'design' } }); setShowPreview(false); }}
+            style={{ background:'none', border:'1px solid #e8e5dc', borderRadius:6, width:28, height:28, cursor:'pointer', color:C.muted, fontSize:16, display:'flex', alignItems:'center', justifyContent:'center', padding:0 }}
+            title="Nouvelle conversation">+</button>
+        </div>
+      </div>
+
+      {showPreview && previewSrc ? (
+        <div style={{ flex:1, display:'flex', flexDirection:'column', minHeight:0 }}>
+          <div style={{ padding:'5px 14px', background:'#eae6dc', fontSize:11, color:'#888', flexShrink:0 }}>
+            Aperçu live · {previewCode.lang.toUpperCase()} · dernière réponse
+          </div>
+          <iframe srcDoc={previewSrc} sandbox="allow-scripts allow-same-origin"
+            style={{ flex:1, border:'none', width:'100%' }} />
+        </div>
+      ) : (
+        !conv?.messages?.length
+          ? <EmptyState tabId="design" title="Mode Design — SVG, HTML/CSS, palettes, maquettes" suggestions={['🎨 Crée un logo SVG','🖼️ Génère une maquette HTML/CSS','🌈 Propose une palette de couleurs',"📐 Wireframe une page d'accueil",'💅 Améliore ce design','🎭 Mood board textuel']} />
+          : <ChatThread tabId="design" />
+      )}
+
+      <InputArea tabId="design" placeholder="Décris ton projet design…" />
+    </div>
+  );
+}
+
+function ZyaTab() {
+  const { state, dispatch, sendMessage } = useApp();
+  const isMobile = useIsMobile();
+  const [mode, setMode] = useState('étude');
+  const t = state.tabs['zya']; const conv = t?.convs.find(c => c.id === t.activeId);
+  const socratic = state.settings.socraticMode?.zya || false;
+  const suggestions = mode === 'étude'
+    ? ['📚 Aide-moi avec les maths','🔬 Explique-moi la physique','✍️ Corrige ma rédac','🌍 Quiz géographie','📖 Résume ce chapitre','💻 Apprends-moi à coder']
+    : ['🎭 Jouons à un jeu de rôle','💬 On discute ?','🎵 Recommande de la musique','🎬 Parle-moi d\'un film','🌟 Qu\'est-ce qui se passe ?','✨ Surprends-moi !'];
+
+  const toggleSocratic = () => {
+    const newSettings = { ...state.settings, socraticMode: { ...state.settings.socraticMode, zya: !socratic } };
+    dispatch({ type:'SET_SETTINGS', payload: newSettings });
+  };
+
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', minHeight:0, background:'#f8f4ff' }}>
+      <div style={{ padding:'10px 20px', borderBottom:`1.5px solid #d4c8f0`, background:'white', display:'flex', alignItems:'center', justifyContent:'space-between', minHeight:52, flexShrink:0 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <div style={{ width:36, height:36, borderRadius:'50%', background:`linear-gradient(135deg,${C.purple},#c87dd4)`, border:`2px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18 }}>✨</div>
+          <div>
+            <div style={{ fontSize:16, fontWeight:700, color:C.purple }}>Nova</div>
+            <div style={{ fontSize:11, color:'#aaa' }}>IA de Zya · 13 ans</div>
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+          <button onClick={toggleSocratic} title="Mode socratique"
+            style={{ padding:'4px 10px', background: socratic ? C.purple : '#f1eee5', color: socratic ? 'white' : C.muted, border:`1.5px solid ${socratic ? C.purple : C.faint}`, borderRadius:20, fontSize:11, cursor:'pointer', fontWeight: socratic ? 600 : 400 }}>
+            🎓 Socratique
+          </button>
+          <div style={{ display:'flex', gap:0, border:`2px solid ${C.ink}`, borderRadius:999, overflow:'hidden', background:'#f8f4ff' }}>
+            {['étude','fun'].map(m => (
+              <button key={m} onClick={() => setMode(m)} style={{ padding:'5px 16px', background: mode===m ? C.purple : 'transparent', color: mode===m ? 'white' : C.purple, border:'none', cursor:'pointer', fontSize:13, fontWeight: mode===m ? 600 : 400, transition:'background .15s' }}>
+                {m==='étude' ? '📚 Devoirs' : '🎮 Fun'}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      {!conv?.messages?.length ? (
+        <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding: isMobile ? 20 : 32, gap:16 }}>
+          <div style={{ fontSize: isMobile ? 36 : 48 }}>✨</div>
+          <div style={{ textAlign:'center' }}>
+            <div style={{ fontSize:22, fontWeight:700, color:C.purple, fontFamily:"'Kalam',cursive" }}>Salut Zya ! Je suis Nova.</div>
+            <div style={{ fontSize:14, color:'#888', marginTop:6 }}>{mode==='étude' ? 'Mode devoirs — je t\'aide à vraiment comprendre' : 'Mode fun — parlons de tout et de rien !'}</div>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(3,1fr)', gap:10, width:'100%', maxWidth:560 }}>
+            {suggestions.map(s => (
+              <button key={s} onClick={() => sendMessage({ tabId:'zya', content:s })}
+                style={{ background:'white', border:`1.5px solid #d4c8f0`, borderRadius:10, padding:'10px 12px', cursor:'pointer', fontSize:13, textAlign:'left', color:'#555', boxShadow:'2px 2px 0 rgba(138,111,199,.1)' }}
+                onMouseEnter={e => { e.currentTarget.style.background='#f8f4ff'; }}
+                onMouseLeave={e => { e.currentTarget.style.background='white'; }}>{s}</button>
+            ))}
+          </div>
+        </div>
+      ) : <ChatThread tabId="zya" />}
+      <InputArea tabId="zya" placeholder="Pose ta question à Nova…" />
+    </div>
+  );
+}
+
+function ZelieTab() {
+  const { state, dispatch, sendMessage } = useApp();
+  const isMobile = useIsMobile();
+  const [mode, setMode] = useState('jeu');
+  const t = state.tabs['zelie']; const conv = t?.convs.find(c => c.id === t.activeId);
+  const socratic = state.settings.socraticMode?.zelie || false;
+  const suggestions = mode === 'jeu'
+    ? ['🦄 Histoire de licorne','🎭 Jouons aux devinettes !','🐬 Parle-moi des dauphins','🎨 Idée de dessin']
+    : ['🔢 Aide-moi avec les multiplications','📖 On lit ensemble ?','🌍 C\'est quoi la géographie ?','🔬 Pourquoi le ciel est bleu ?'];
+
+  const toggleSocratic = () => {
+    const newSettings = { ...state.settings, socraticMode: { ...state.settings.socraticMode, zelie: !socratic } };
+    dispatch({ type:'SET_SETTINGS', payload: newSettings });
+  };
+
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', minHeight:0, background:'#fff5f9' }}>
+      <div style={{ padding:'10px 20px', borderBottom:`1.5px solid #f8c8dc`, background:'white', display:'flex', alignItems:'center', justifyContent:'space-between', minHeight:52, flexShrink:0 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <div style={{ width:40, height:40, borderRadius:'50%', background:`linear-gradient(135deg,${C.pink},${C.yellow})`, border:`2px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20 }}>🌸</div>
+          <div>
+            <div style={{ fontSize:16, fontWeight:700, color:C.pink, fontFamily:"'Kalam',cursive" }}>Pixel</div>
+            <div style={{ fontSize:11, color:'#aaa' }}>ami robot de Zélie · 9 ans</div>
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+          <button onClick={toggleSocratic} title="Mode socratique"
+            style={{ padding:'4px 8px', background: socratic ? C.pink : '#f1eee5', color: socratic ? 'white' : C.muted, border:`1.5px solid ${socratic ? C.pink : C.faint}`, borderRadius:20, fontSize:11, cursor:'pointer', fontWeight: socratic ? 600 : 400 }}>
+            🎓 Socratique
+          </button>
+          {[{ id:'jeu', label:'🎈 Jeu', color:C.yellow }, { id:'devoirs', label:'📚 Devoirs', color:C.green }].map(m => (
+            <button key={m.id} onClick={() => setMode(m.id)}
+              style={{ padding: isMobile ? '5px 10px' : '6px 14px', background: mode===m.id ? m.color : '#f9f4f6', border:`2px solid ${mode===m.id ? C.ink : '#e8e5dc'}`, borderRadius:999, cursor:'pointer', fontSize: isMobile ? 12 : 13, fontWeight: mode===m.id ? 700 : 400, boxShadow: mode===m.id ? '2px 2px 0 rgba(0,0,0,.1)' : 'none' }}>{m.label}</button>
+          ))}
+        </div>
+      </div>
+      {!conv?.messages?.length ? (
+        <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding: isMobile ? 20 : 32, gap:16 }}>
+          <div style={{ width: isMobile ? 72 : 100, height: isMobile ? 72 : 100, borderRadius:'50%', background:`linear-gradient(135deg,${C.pink},${C.yellow})`, border:`3px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize: isMobile ? 36 : 50, boxShadow:'4px 4px 0 rgba(0,0,0,.1)' }}>🌸</div>
+          <div style={{ textAlign:'center' }}>
+            <div style={{ fontSize:26, fontWeight:700, color:C.pink, fontFamily:"'Kalam',cursive" }}>Coucou Zélie ! 🌟</div>
+            <div style={{ fontSize:15, color:'#888', marginTop:6 }}>{mode==='jeu' ? 'Je suis Pixel, ton ami robot ! On joue ?' : 'Mode devoirs ! On travaille ensemble ? 📚'}</div>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:12, width:'100%', maxWidth:420 }}>
+            {suggestions.map(s => (
+              <button key={s} onClick={() => sendMessage({ tabId:'zelie', content:s })}
+                style={{ background:'white', border:`2px solid #f8c8dc`, borderRadius:14, padding:'14px 16px', cursor:'pointer', fontSize:14, textAlign:'center', color:'#555', boxShadow:'3px 3px 0 rgba(232,138,178,.15)' }}
+                onMouseEnter={e => { e.currentTarget.style.background='#fff5f9'; }}
+                onMouseLeave={e => { e.currentTarget.style.background='white'; }}>{s}</button>
+            ))}
+          </div>
+        </div>
+      ) : <ChatThread tabId="zelie" />}
+      <InputArea tabId="zelie" placeholder="Dis quelque chose à Pixel 🌸" />
+    </div>
+  );
+}
+
+// ─── Family Tab ───────────────────────────────────────────────
+function FamilyTab() {
+  const { state } = useApp();
+  const isMobile = useIsMobile();
+  const [msgs, setMsgs] = useState(() => lsGet('family_msgs', []));
+  const [text, setText] = useState('');
+  const bottomRef = useRef(null);
+  const profile = getProfile(state.profile);
+
+  useEffect(() => {
+    if (bottomRef.current) bottomRef.current.scrollTop = bottomRef.current.scrollHeight;
+  }, [msgs]);
+
+  // Sync from Firebase on mount
+  useEffect(() => {
+    if (!CLOUD.enabled) return;
+    CLOUD.db.collection('ricard_family').doc(getFamilyId()).get().then(doc => {
+      if (doc.exists) {
+        const remote = doc.data().msgs || [];
+        if (remote.length) { setMsgs(remote); lsSet('family_msgs', remote); }
+      }
+    }).catch(() => {});
+  }, []);
+
+  const post = () => {
+    if (!text.trim()) return;
+    const newMsg = { id: uuid(), from: profile?.name || state.profile, fromId: state.profile, content: text.trim(), ts: Date.now() };
+    const updated = [...msgs, newMsg];
+    setMsgs(updated);
+    lsSet('family_msgs', updated);
+    setText('');
+    // Save to Firebase
+    if (CLOUD.enabled) {
+      CLOUD.db.collection('ricard_family').doc(getFamilyId()).set({ msgs: updated.slice(-100) }).catch(() => {});
+    }
+  };
+
+  const profileColor = (fromId) => getProfile(fromId)?.color || C.muted;
+
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', minHeight:0, background:'#f0faf8' }}>
+      <div style={{ padding:'10px 20px', borderBottom:`1.5px solid #b8e0d8`, background:'white', display:'flex', alignItems:'center', gap:12, minHeight:52, flexShrink:0 }}>
+        <span style={{ fontSize:22 }}>👨‍👩‍👧</span>
+        <div>
+          <div style={{ fontSize:16, fontWeight:700, color:C.teal }}>Famille Ricard</div>
+          <div style={{ fontSize:11, color:'#aaa' }}>Tableau de messages partagé</div>
+        </div>
+      </div>
+      <div ref={bottomRef} className="scroll-y" style={{ flex:1, minHeight:0, padding: isMobile ? '12px 10px' : '20px 24px', display:'flex', flexDirection:'column', gap:10 }}>
+        {msgs.length === 0 && (
+          <div style={{ textAlign:'center', color:C.muted, marginTop:40, fontSize:14 }}>
+            <div style={{ fontSize:40, marginBottom:12 }}>👨‍👩‍👧</div>
+            <div>Aucun message encore. Soyez le premier à écrire !</div>
+          </div>
+        )}
+        {msgs.map(m => {
+          const isMe = m.fromId === state.profile;
+          return (
+            <div key={m.id} style={{ display:'flex', justifyContent: isMe ? 'flex-end' : 'flex-start', gap:8 }}>
+              {!isMe && (
+                <div style={{ width:28, height:28, borderRadius:'50%', background:profileColor(m.fromId), border:`2px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontFamily:"'Kalam',cursive", fontWeight:700, flexShrink:0, color:'white', marginTop:2 }}>
+                  {m.from?.[0]?.toUpperCase() || '?'}
+                </div>
+              )}
+              <div style={{ maxWidth:'72%' }}>
+                {!isMe && <div style={{ fontSize:11, color:profileColor(m.fromId), fontWeight:600, marginBottom:2, paddingLeft:2 }}>{m.from}</div>}
+                <div style={{ background: isMe ? C.teal : 'white', color: isMe ? 'white' : C.ink, border:`1.5px solid ${isMe ? C.teal : '#b8e0d8'}`, borderRadius: isMe ? '14px 14px 4px 14px' : '14px 14px 14px 4px', padding:'10px 14px', fontSize:14, lineHeight:1.5, boxShadow:'2px 2px 0 rgba(0,0,0,.06)' }}>
+                  {m.content}
+                </div>
+                <div style={{ fontSize:11, color:'#aaa', marginTop:2, paddingLeft:4, textAlign: isMe ? 'right' : 'left' }}>
+                  {new Date(m.ts).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' })}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ padding: isMobile ? '8px 10px' : '12px 16px', borderTop:`1.5px solid #b8e0d8`, background:'white', flexShrink:0, display:'flex', gap:8 }}>
+        <textarea value={text} onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); post(); } }}
+          placeholder="Écrire un message à la famille…" rows={1}
+          style={{ flex:1, padding:'10px 14px', border:`2px solid ${C.teal}`, borderRadius:10, fontSize:14, fontFamily:'Inter,sans-serif', resize:'none', outline:'none', background:C.paper }} />
+        <button onClick={post} disabled={!text.trim()}
+          style={{ background: text.trim() ? C.teal : C.faint, border:'none', borderRadius:10, color:'white', width:44, height:44, cursor: text.trim() ? 'pointer' : 'not-allowed', fontSize:18, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>↑</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Search Modal ──────────────────────────────────────────────
+function SearchModal() {
+  const { state, dispatch } = useApp();
+  const [q, setQ] = useState('');
+  const inputRef = useRef(null);
+  const isMobile = useIsMobile();
+
+  useEffect(() => { if (state.showSearch && inputRef.current) { setQ(''); inputRef.current.focus(); } }, [state.showSearch]);
+  useEffect(() => {
+    const h = e => { if (e.key === 'Escape') dispatch({ type:'TOGGLE_SEARCH' }); };
+    window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
+  }, []);
+
+  if (!state.showSearch) return null;
+
+  const results = [];
+  if (q.trim().length >= 2) {
+    const qlow = q.toLowerCase();
+    TABS.forEach(tabId => {
+      const ts = state.tabs[tabId];
+      if (!ts) return;
+      ts.convs.forEach(conv => {
+        const titleMatch = conv.title.toLowerCase().includes(qlow);
+        const msgMatch = conv.messages.find(m => m.content?.toLowerCase().includes(qlow));
+        if (titleMatch || msgMatch) {
+          const snippet = msgMatch ? msgMatch.content.slice(0, 80) : conv.title;
+          results.push({ tabId, conv, snippet });
+        }
+      });
+    });
+  }
+
+  const go = ({ tabId, conv }) => {
+    dispatch({ type:'SET_TAB', payload: tabId });
+    dispatch({ type:'SELECT_CONV', payload:{ tabId, convId: conv.id } });
+    dispatch({ type:'TOGGLE_SEARCH' });
+  };
+
+  return (
+    <>
+      <div onClick={() => dispatch({ type:'TOGGLE_SEARCH' })} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.35)', zIndex:200 }} />
+      <div style={{ position:'fixed', top: isMobile ? '8%' : '15%', left:'50%', transform:'translateX(-50%)', width: isMobile ? 'calc(100vw - 24px)' : 560, background:'white', border:`2px solid ${C.ink}`, borderRadius:14, boxShadow:'6px 8px 0 rgba(0,0,0,.15)', zIndex:201, overflow:'hidden' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8, padding:'12px 14px', borderBottom:`1px solid #e8e5dc` }}>
+          <span style={{ fontSize:16, color:'#aaa' }}>🔍</span>
+          <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)}
+            placeholder="Rechercher dans les conversations…"
+            style={{ flex:1, border:'none', outline:'none', fontSize:15, fontFamily:'Inter,sans-serif', color:C.ink }} />
+          <button onClick={() => dispatch({ type:'TOGGLE_SEARCH' })} style={{ background:'none', border:'none', cursor:'pointer', color:'#aaa', fontSize:18 }}>✕</button>
+        </div>
+        <div style={{ maxHeight:380, overflowY:'auto' }}>
+          {q.trim().length < 2 && (
+            <div style={{ padding:'24px', textAlign:'center', color:'#aaa', fontSize:13 }}>Tapez au moins 2 caractères pour chercher</div>
+          )}
+          {q.trim().length >= 2 && results.length === 0 && (
+            <div style={{ padding:'24px', textAlign:'center', color:'#aaa', fontSize:13 }}>Aucun résultat pour "{q}"</div>
+          )}
+          {results.map((r, i) => (
+            <button key={i} onClick={() => go(r)}
+              style={{ display:'block', width:'100%', padding:'10px 14px', border:'none', borderBottom:`1px solid #f0ede4`, background:'transparent', cursor:'pointer', textAlign:'left' }}
+              onMouseEnter={e => e.currentTarget.style.background='#f7f4ec'}
+              onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3 }}>
+                <span style={{ fontSize:12, background:C.shade, padding:'1px 6px', borderRadius:10, color:C.muted }}>{r.tabId}</span>
+                <span style={{ fontSize:13, fontWeight:600, color:C.ink }}>{r.conv.title}</span>
+              </div>
+              <div style={{ fontSize:12, color:'#888', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{r.snippet}</div>
+            </button>
+          ))}
+        </div>
+        <div style={{ padding:'8px 14px', fontSize:11, color:'#bbb', borderTop:`1px solid #f0ede4` }}>Esc pour fermer · Ctrl+F pour ouvrir</div>
+      </div>
+    </>
+  );
+}
+
+// ─── Compare Modal ─────────────────────────────────────────────
+function CompareModal() {
+  const { state, dispatch } = useApp();
+  const [modelA, setModelA] = useState(DEFAULT_MODEL);
+  const [modelB, setModelB] = useState('openai/gpt-4o-mini');
+  const [prompt, setPrompt] = useState('');
+  const [resA, setResA] = useState('');
+  const [resB, setResB] = useState('');
+  const [loadingA, setLoadingA] = useState(false);
+  const [loadingB, setLoadingB] = useState(false);
+  const isMobile = useIsMobile();
+
+  useEffect(() => {
+    const h = e => { if (e.key === 'Escape') dispatch({ type:'TOGGLE_COMPARE' }); };
+    window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
+  }, []);
+
+  if (!state.showCompare) return null;
+
+  const runCompare = async () => {
+    if (!prompt.trim() || !state.settings.apiKey) return;
+    setResA(''); setResB('');
+    setLoadingA(true); setLoadingB(true);
+    const msgs = [{ role:'user', content: prompt.trim() }];
+    streamChat({ apiKey: state.settings.apiKey, model: modelA, messages: msgs,
+      onChunk: (_, full) => setResA(full),
+      onDone: ({ text }) => { setResA(text); setLoadingA(false); },
+      onError: (e) => { setResA('⚠️ ' + e); setLoadingA(false); },
+    });
+    streamChat({ apiKey: state.settings.apiKey, model: modelB, messages: msgs,
+      onChunk: (_, full) => setResB(full),
+      onDone: ({ text }) => { setResB(text); setLoadingB(false); },
+      onError: (e) => { setResB('⚠️ ' + e); setLoadingB(false); },
+    });
+  };
+
+  return (
+    <>
+      <div onClick={() => dispatch({ type:'TOGGLE_COMPARE' })} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.35)', zIndex:200 }} />
+      <div style={{ position:'fixed', top:'4%', left:'50%', transform:'translateX(-50%)', width: isMobile ? 'calc(100vw - 16px)' : 800, maxHeight:'90vh', background:'white', border:`2px solid ${C.ink}`, borderRadius:14, boxShadow:'6px 8px 0 rgba(0,0,0,.15)', zIndex:201, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+        <div style={{ padding:'12px 18px', borderBottom:`1.5px solid #e8e5dc`, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <span style={{ fontSize:16, fontWeight:700 }}>⚡ Comparaison de modèles</span>
+          <button onClick={() => dispatch({ type:'TOGGLE_COMPARE' })} style={{ background:'none', border:'none', cursor:'pointer', fontSize:20, color:'#888' }}>✕</button>
+        </div>
+        <div style={{ padding:'14px 18px', borderBottom:`1px solid #e8e5dc`, display:'flex', flexDirection: isMobile ? 'column' : 'row', gap:12 }}>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:11, color:'#888', marginBottom:4, fontWeight:600 }}>MODÈLE A</div>
+            <select value={modelA} onChange={e => setModelA(e.target.value)}
+              style={{ width:'100%', padding:'6px 10px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:13, background:C.paper, outline:'none' }}>
+              {MODELS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:11, color:'#888', marginBottom:4, fontWeight:600 }}>MODÈLE B</div>
+            <select value={modelB} onChange={e => setModelB(e.target.value)}
+              style={{ width:'100%', padding:'6px 10px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:13, background:C.paper, outline:'none' }}>
+              {MODELS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{ padding:'12px 18px', borderBottom:`1px solid #e8e5dc`, display:'flex', gap:8 }}>
+          <textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows={2}
+            placeholder="Entrez votre question pour les deux modèles…"
+            style={{ flex:1, padding:'8px 12px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:14, fontFamily:'Inter,sans-serif', resize:'none', outline:'none' }} />
+          <button onClick={runCompare} disabled={!prompt.trim() || loadingA || loadingB}
+            style={{ background: prompt.trim() ? C.ink : C.faint, border:'none', borderRadius:8, color:'white', padding:'0 20px', fontSize:14, cursor: prompt.trim() ? 'pointer' : 'not-allowed', fontWeight:600, flexShrink:0 }}>
+            {loadingA || loadingB ? '⏳' : 'Envoyer'}
+          </button>
+        </div>
+        <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection: isMobile ? 'column' : 'row', minHeight:200 }}>
+          {[{model: modelA, res: resA, loading: loadingA, label:'A'}, {model: modelB, res: resB, loading: loadingB, label:'B'}].map(({model, res, loading, label}) => (
+            <div key={label} style={{ flex:1, padding:'14px 16px', borderRight: label==='A' && !isMobile ? `1px solid #e8e5dc` : 'none', borderTop: label==='B' && isMobile ? `1px solid #e8e5dc` : 'none', overflow:'auto' }}>
+              <div style={{ fontSize:11, fontWeight:700, color:'#888', marginBottom:8 }}>
+                {getModel(model)?.name || model} {loading && <span className="streaming-dot" style={{ display:'inline-block', width:6, height:6, marginLeft:6 }} />}
+              </div>
+              {res ? <MsgContent content={res} /> : (
+                <div style={{ color:'#bbb', fontSize:13, fontStyle:'italic' }}>{loading ? 'En cours…' : 'La réponse apparaîtra ici'}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─── Model Picker ─────────────────────────────────────────────
+function ModelPicker() {
+  const { state, dispatch } = useApp();
+  const [search, setSearch] = useState('');
+  const [cat, setCat] = useState('all');
+  const [liveModels, setLiveModels] = useState(null); // null=curated, 'loading'=fetching, array=live
+  const [liveError, setLiveError] = useState('');
+  const [sortPrice, setSortPrice] = useState(null); // null | 'asc' | 'desc'
+  const ref = useRef(null);
+
+  useEffect(() => { if (state.showModelPicker && ref.current) ref.current.focus(); }, [state.showModelPicker]);
+  useEffect(() => {
+    const h = e => { if (e.key === 'Escape') dispatch({ type:'CLOSE_MODEL_PICKER' }); };
+    window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
+  }, []);
+
+  const isMobile = useIsMobile();
+
+  if (!state.showModelPicker) return null;
+
+  const tabId = state.tab;
+  const ts = state.tabs[tabId];
+  const current = ts?.convs.find(c => c.id === ts.activeId)?.model;
+  const isLive = Array.isArray(liveModels);
+
+  const fetchLive = async () => {
+    setLiveModels('loading');
+    setLiveError('');
+    try {
+      const resp = await fetch('https://openrouter.ai/api/v1/models');
+      if (!resp.ok) throw new Error(`Erreur ${resp.status}`);
+      const { data } = await resp.json();
+      const mapped = data
+        .filter(m => m.id && m.name)
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map(m => ({
+          id: m.id,
+          name: m.name,
+          provider: m.id.split('/')[0],
+          cat: 'live',
+          inCost: parseFloat(m.pricing?.prompt || 0) * 1e6,
+          outCost: parseFloat(m.pricing?.completion || 0) * 1e6,
+          ctx: m.context_length ? (m.context_length >= 1000000 ? `${Math.round(m.context_length/1000000)}M` : `${Math.round(m.context_length/1000)}k`) : '?',
+          vision: (m.architecture?.modality || '').includes('image'),
+          note: m.description ? m.description.slice(0, 60) : '',
+          speed: 2,
+        }));
+      mapped.forEach(m => { _modelCache[m.id] = m; });
+      setLiveModels(mapped);
+    } catch(e) {
+      setLiveError(e.message || 'Erreur inconnue');
+      setLiveModels(null);
+    }
+  };
+
+  const sourceModels = isLive ? liveModels : MODELS;
+
+  const filtered = sourceModels
+    .filter(m => {
+      if (!isLive && cat !== 'all' && m.cat !== cat) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        return m.name.toLowerCase().includes(q) || m.provider.toLowerCase().includes(q) || m.id.toLowerCase().includes(q);
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      if (!sortPrice) return 0;
+      const pa = a.inCost ?? 0, pb = b.inCost ?? 0;
+      return sortPrice === 'asc' ? pa - pb : pb - pa;
+    });
+
+  const grouped = MODEL_CATS.slice(1).reduce((acc, c) => {
+    const items = filtered.filter(m => m.cat === c.id);
+    if (items.length) acc[c.id] = { label:c.label, items };
+    return acc;
+  }, {});
+
+  const select = id => dispatch({ type:'SET_MODEL', payload:{ tabId, model:id } });
+
+  return (
+    <>
+      <div onClick={() => dispatch({ type:'CLOSE_MODEL_PICKER' })} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.35)', zIndex:100 }} />
+      <div style={{ position:'fixed', top: isMobile ? '4%' : '10%', left:'50%', transform:'translateX(-50%)', width: isMobile ? 'calc(100vw - 16px)' : 620, maxHeight:'88vh', background:'white', border:`2px solid ${C.ink}`, borderRadius:14, boxShadow:'6px 8px 0 rgba(0,0,0,.15)', zIndex:101, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+        <div style={{ padding:'10px 14px', borderBottom:`1.5px solid #e8e5dc`, display:'flex', alignItems:'center', gap:8 }}>
+          <div style={{ flex:1, display:'flex', alignItems:'center', gap:8, background:'#f7f4ec', border:`1.5px solid #e0ddd4`, borderRadius:8, padding:'7px 12px' }}>
+            <span style={{ fontSize:14, color:'#aaa', flexShrink:0 }}>🔍</span>
+            <input ref={ref} value={search} onChange={e => setSearch(e.target.value)}
+              placeholder={isLive ? `Chercher parmi ${Array.isArray(liveModels) ? liveModels.length : '?'} modèles…` : 'Chercher… (haiku, gpt, gemini, mistral…)'}
+              style={{ flex:1, border:'none', outline:'none', fontSize:14, background:'transparent', color:C.ink }} />
+            {search && <button onClick={() => setSearch('')} style={{ background:'none', border:'none', cursor:'pointer', color:'#aaa', fontSize:16, padding:0, lineHeight:1 }}>×</button>}
+          </div>
+          <button
+            onClick={() => setSortPrice(s => s === 'asc' ? 'desc' : s === 'desc' ? null : 'asc')}
+            title="Trier par prix"
+            style={{ flexShrink:0, background: sortPrice ? C.ink : '#f1eee5', border:`1.5px solid ${sortPrice ? C.ink : C.faint}`, borderRadius:8, padding:'6px 10px', cursor:'pointer', fontSize:13, color: sortPrice ? 'white' : '#888', display:'flex', alignItems:'center', gap:3 }}>
+            💰{sortPrice === 'asc' ? ' ↑' : sortPrice === 'desc' ? ' ↓' : ''}
+          </button>
+          <span style={{ fontSize:11, color:'#bbb', background:'#f1eee5', padding:'3px 8px', borderRadius:4, flexShrink:0 }}>Esc</span>
+        </div>
+
+        <div style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', borderBottom:`1px solid #f0ede4`, overflowX:'auto', flexShrink:0 }}>
+          {!isLive && MODEL_CATS.map(c => (
+            <button key={c.id} onClick={() => setCat(c.id)}
+              style={{ background: cat===c.id ? (c.color || C.ink) : '#f7f4ec', color: cat===c.id ? 'white' : '#555', border:`1px solid ${cat===c.id ? 'transparent' : '#e0ddd4'}`, borderRadius:20, padding:'3px 12px', fontSize:12, cursor:'pointer', whiteSpace:'nowrap' }}>
+              {c.label}
+            </button>
+          ))}
+          <div style={{ marginLeft:'auto', flexShrink:0, display:'flex', gap:6, alignItems:'center' }}>
+            {isLive && (
+              <button onClick={() => { setLiveModels(null); setCat('all'); }}
+                style={{ background:'#f7f4ec', border:`1px solid #e0ddd4`, borderRadius:20, padding:'3px 12px', fontSize:12, cursor:'pointer', color:'#555', whiteSpace:'nowrap' }}>
+                ← Sélection
+              </button>
+            )}
+            <button onClick={isLive ? fetchLive : fetchLive}
+              style={{ background: isLive ? C.teal : C.ink, border:'none', borderRadius:20, padding:'3px 14px', fontSize:12, cursor:'pointer', color:'white', whiteSpace:'nowrap', fontWeight:600, display:'flex', alignItems:'center', gap:5 }}>
+              {liveModels === 'loading' ? '⏳ Chargement…' : isLive ? '🔄 Actualiser' : '🌐 Tous les modèles'}
+            </button>
+          </div>
+        </div>
+
+        {liveError && (
+          <div style={{ padding:'8px 14px', background:'#fff5f5', borderBottom:`1px solid #fdd`, fontSize:12, color:C.red }}>{liveError}</div>
+        )}
+
+        <div style={{ overflow:'auto', flex:1 }}>
+          {liveModels === 'loading' ? (
+            <div style={{ padding:40, textAlign:'center', color:'#aaa' }}>
+              <div style={{ fontSize:32, marginBottom:12 }}>⏳</div>
+              <div>Récupération des modèles OpenRouter…</div>
+            </div>
+          ) : isLive ? (
+            <>
+              {filtered.length === 0 && <div style={{ padding:40, textAlign:'center', color:'#aaa' }}>Aucun modèle trouvé</div>}
+              {filtered.map(m => <ModelRow key={m.id} m={m} current={current} onSelect={select} />)}
+            </>
+          ) : (
+            <>
+              {cat === 'all'
+                ? Object.entries(grouped).map(([cid, { label, items }]) => (
+                  <div key={cid}>
+                    <div style={{ padding:'8px 14px 4px', fontSize:10, fontWeight:700, letterSpacing:1, textTransform:'uppercase', color: CAT_COLOR[cid] || '#aaa' }}>{label}</div>
+                    {items.map(m => <ModelRow key={m.id} m={m} current={current} onSelect={select} />)}
+                  </div>
+                ))
+                : filtered.map(m => <ModelRow key={m.id} m={m} current={current} onSelect={select} />)
+              }
+              {!filtered.length && <div style={{ padding:40, textAlign:'center', color:'#aaa' }}>Aucun modèle trouvé</div>}
+            </>
+          )}
+        </div>
+
+        <div style={{ padding:'8px 14px', borderTop:`1px solid #f0ede4`, display:'flex', justifyContent:'space-between', fontSize:11, color:'#bbb' }}>
+          <span>{isLive ? `${filtered.length} / ${liveModels.length} modèles OpenRouter live` : `${MODELS.length} modèles sélectionnés`}</span>
+          <span>Esc pour fermer</span>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ModelRow({ m, current, onSelect }) {
+  const isCur = m.id === current;
+  const col = CAT_COLOR[m.cat] || '#888';
+  return (
+    <button onClick={() => onSelect(m.id)}
+      style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 14px', width:'100%', background: isCur ? '#fffaee' : 'transparent', border:'none', borderBottom:`1px solid #f7f4ec`, cursor:'pointer', textAlign:'left', gap:10 }}
+      onMouseEnter={e => { if (!isCur) e.currentTarget.style.background='#f9f7f2'; }}
+      onMouseLeave={e => { if (!isCur) e.currentTarget.style.background = isCur ? '#fffaee' : 'transparent'; }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10, flex:1, minWidth:0 }}>
+        <div style={{ width:20, height:20, borderRadius:'50%', background:col, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, color:'white', fontWeight:700 }}>
+          {isCur ? '✓' : m.provider[0]}
+        </div>
+        <div style={{ minWidth:0 }}>
+          <div style={{ fontSize:14, fontWeight: isCur ? 600 : 400, color:C.ink }}>{m.name}</div>
+          <div style={{ fontSize:11, color:'#aaa', marginTop:1 }}>{m.provider} · {m.ctx}{m.note ? ` · ${m.note}` : ''}</div>
+        </div>
+      </div>
+      <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+        {m.vision && <span style={{ fontSize:10, background:'#e8f4ec', color:C.teal, padding:'1px 6px', borderRadius:10, border:`1px solid #c8e8d8` }}>vision</span>}
+        <span style={{ fontSize:12, color:'#aaa' }}>{speedLabel(m.speed)}</span>
+        <span style={{ fontSize:12, fontWeight:600, color:'#555', minWidth:50, textAlign:'right' }}>{m.inCost ? `$${m.inCost}/M` : 'Gratuit'}</span>
+      </div>
+    </button>
+  );
+}
+
+// ─── Settings ─────────────────────────────────────────────────
+function Settings() {
+  const { state, dispatch } = useApp();
+  const [s, setS] = useState(() => ({ ...state.settings }));
+  const [showKey, setShowKey] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [fbCfgText, setFbCfgText] = useState(() => {
+    const c = loadFbConfig(); return c ? JSON.stringify(c, null, 2) : '';
+  });
+  const [fbStatus, setFbStatus] = useState(() => CLOUD.enabled ? 'ok' : 'off');
+  const [fbError, setFbError] = useState('');
+  const [showFbCfg, setShowFbCfg] = useState(false);
+
+  useEffect(() => { if (state.showSettings) setS({ ...state.settings }); }, [state.showSettings]);
+  const isMobile = useIsMobile();
+
+  if (!state.showSettings) return null;
+
+  const save = () => {
+    dispatch({ type:'SET_SETTINGS', payload:s });
+    saveSettings(s); // Sauvegarde immédiate (pas uniquement via useEffect)
+    // Init Firebase si config renseignée
+    if (fbCfgText.trim()) {
+      const cfg = extractJsonObj(fbCfgText);
+      if (!cfg || !cfg.projectId) {
+        setFbStatus('error');
+        setFbError('Impossible de lire la config — colle le bloc firebaseConfig complet');
+      } else {
+        saveFbConfig(cfg);
+        const result = initFirebase(cfg);
+        if (result === true) { setFbStatus('ok'); setFbError(''); }
+        else { setFbStatus('error'); setFbError(String(result)); }
+      }
+    }
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <>
+      <div onClick={() => dispatch({ type:'TOGGLE_SETTINGS' })} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.3)', zIndex:100 }} />
+      <div style={{ position:'fixed', top: isMobile ? '4%' : '8%', right: isMobile ? 'auto' : 24, left: isMobile ? '50%' : 'auto', transform: isMobile ? 'translateX(-50%)' : 'none', width: isMobile ? 'calc(100vw - 16px)' : 400, maxHeight: isMobile ? 'calc(92dvh - 56px - env(safe-area-inset-bottom, 0px))' : '90vh', background:'white', border:`2px solid ${C.ink}`, borderRadius:14, boxShadow:'6px 8px 0 rgba(0,0,0,.15)', zIndex:101, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+        <div style={{ padding:'14px 18px', borderBottom:`1.5px solid #e8e5dc`, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <span style={{ fontSize:17, fontWeight:700 }}>⚙️ Réglages</span>
+          <button onClick={() => dispatch({ type:'TOGGLE_SETTINGS' })} style={{ background:'none', border:'none', cursor:'pointer', fontSize:20, color:'#888' }}>✕</button>
+        </div>
+        <div style={{ overflow:'auto', padding:'16px 18px', display:'flex', flexDirection:'column', gap:20 }}>
+          <section>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:8 }}>Clé API OpenRouter</div>
+            <div style={{ display:'flex', gap:8 }}>
+              <input type={showKey ? 'text' : 'password'} value={s.apiKey || ''} onChange={e => setS(p => ({ ...p, apiKey:e.target.value }))} placeholder="sk-or-v1-…"
+                style={{ flex:1, padding:'8px 12px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:14, fontFamily:'monospace', outline:'none', background:C.paper }} />
+              <button onClick={() => setShowKey(v => !v)} style={{ background:'#f1eee5', border:`1.5px solid ${C.faint}`, borderRadius:8, padding:'0 12px', cursor:'pointer', fontSize:14 }}>{showKey ? '🙈' : '👁️'}</button>
+            </div>
+            <p style={{ fontSize:12, color:'#aaa', margin:'6px 0 0' }}>
+              Obtenez votre clé sur <a href="https://openrouter.ai/keys" target="_blank" rel="noopener" style={{ color:C.blue }}>openrouter.ai/keys</a>
+            </p>
+          </section>
+          <section>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:8 }}>Budget mensuel ($)</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {PROFILES.map(p => (
+                <div key={p.id} style={{ display:'flex', alignItems:'center', gap:12 }}>
+                  <div style={{ width:28, height:28, borderRadius:'50%', background:p.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontFamily:"'Kalam',cursive", fontWeight:700, flexShrink:0 }}>{p.label}</div>
+                  <span style={{ flex:1, fontSize:14, fontWeight:500 }}>{p.name}</span>
+                  <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                    <span style={{ color:'#aaa', fontSize:13 }}>$</span>
+                    <input type="number" min={1} max={500} value={s.budgets?.[p.id] ?? 50} onChange={e => setS(prev => ({ ...prev, budgets:{ ...prev.budgets, [p.id]: Number(e.target.value) } }))}
+                      style={{ width:64, padding:'5px 8px', border:`1.5px solid ${C.faint}`, borderRadius:6, fontSize:14, textAlign:'right', outline:'none' }} />
+                    <span style={{ color:'#aaa', fontSize:11 }}>/mois</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+          <section>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:8 }}>Code PIN — Profils adultes</div>
+            <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+              <input type="password" inputMode="numeric" maxLength={4} value={s.adminPin || ''}
+                onChange={e => setS(p => ({ ...p, adminPin: e.target.value.replace(/\D/g,'').slice(0,4) }))}
+                placeholder="Laisser vide = aucun PIN"
+                style={{ flex:1, padding:'8px 12px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:18, textAlign:'center', letterSpacing:6, outline:'none', background:C.paper }} />
+              {s.adminPin && (
+                <button onClick={() => setS(p => ({ ...p, adminPin:'' }))}
+                  style={{ background:'#f1eee5', border:`1.5px solid ${C.faint}`, borderRadius:8, padding:'8px 12px', cursor:'pointer', fontSize:13, flexShrink:0 }}>Supprimer</button>
+              )}
+            </div>
+            <p style={{ fontSize:12, color:'#aaa', margin:'6px 0 0' }}>
+              🔒 4 chiffres. Protège Papa & Maman — les enfants ne peuvent pas y accéder.
+            </p>
+          </section>
+
+          {/* ── Modèles par défaut ──────────────────────── */}
+          <section>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>🤖 Modèles par défaut</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {[
+                { tab:'chat',   label:'💬 Chat',          },
+                { tab:'code',   label:'⌨️ Code',          },
+                { tab:'design', label:'🎨 Design',        },
+                { tab:'zya',    label:'🌟 Zya (Nova)',    },
+                { tab:'zelie',  label:'🌸 Zélie (Pixel)', },
+              ].map(({ tab, label }) => (
+                <div key={tab} style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <span style={{ fontSize:13, flex:'0 0 120px', color:C.ink }}>{label}</span>
+                  <select
+                    value={s.defaultModels?.[tab] ?? DEFAULT_MODELS_PER_TAB[tab]}
+                    onChange={e => setS(p => ({ ...p, defaultModels: { ...(p.defaultModels ?? DEFAULT_MODELS_PER_TAB), [tab]: e.target.value } }))}
+                    style={{ flex:1, padding:'6px 8px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:12, background:C.paper, outline:'none', color:C.ink }}>
+                    {Object.entries(
+                      MODELS.reduce((acc, m) => { (acc[m.cat] = acc[m.cat]||[]).push(m); return acc; }, {})
+                    ).map(([cat, models]) => (
+                      <optgroup key={cat} label={cat.charAt(0).toUpperCase()+cat.slice(1)}>
+                        {models.map(m => <option key={m.id} value={m.id}>{m.name} {m.inCost===0 ? '(gratuit)' : `($${m.inCost}/M)`}</option>)}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+            <p style={{ fontSize:11, color:'#aaa', margin:'8px 0 0' }}>S'applique aux nouvelles conversations. Les conversations existantes gardent leur modèle.</p>
+          </section>
+
+          {/* ── Section Cloud ───────────────────────────── */}
+          <section>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>☁️ Sync & Sauvegarde</div>
+
+            {/* Status Firebase */}
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, padding:'8px 12px', borderRadius:8, background: fbStatus==='ok' ? '#edfaed' : fbStatus==='error' ? '#fdf0f0' : '#f7f4ec', border:`1px solid ${fbStatus==='ok' ? '#b8e8b8' : fbStatus==='error' ? '#f5c0c0' : '#e0ddd4'}` }}>
+              <span style={{ fontSize:18 }}>{fbStatus==='ok' ? '🟢' : fbStatus==='error' ? '🔴' : '⚪'}</span>
+              <div>
+                <div style={{ fontSize:13, fontWeight:600, color:C.ink }}>Firebase {fbStatus==='ok' ? 'connecté' : fbStatus==='error' ? 'erreur' : 'non configuré'}</div>
+                <div style={{ fontSize:11, color:'#888' }}>
+                  {fbStatus==='ok' ? 'Sync automatique activé sur tous vos appareils'
+                   : fbError || 'Conversations sauvegardées localement uniquement'}
+                </div>
+              </div>
+            </div>
+
+            {/* Family ID */}
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:12, color:'#888', marginBottom:4 }}>🔑 ID famille <span style={{ color:'#bbb' }}>(à partager sur tes autres appareils)</span></div>
+              <div style={{ display:'flex', gap:8 }}>
+                <input readOnly value={getFamilyId()} style={{ flex:1, padding:'7px 10px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:10, fontFamily:'monospace', background:'#f9f7f2', color:'#888', outline:'none' }} />
+                <button onClick={() => { navigator.clipboard.writeText(getFamilyId()); }} style={{ background:'#f1eee5', border:`1.5px solid ${C.faint}`, borderRadius:8, padding:'0 12px', cursor:'pointer', fontSize:13, flexShrink:0 }}>📋 Copier</button>
+              </div>
+              <p style={{ fontSize:11, color:'#bbb', margin:'4px 0 0' }}>Sur un autre appareil : Réglages → coller cet ID dans le champ "ID famille"</p>
+            </div>
+
+            {/* Firebase Config (collapsible) */}
+            <div style={{ marginBottom:12 }}>
+              <button onClick={() => setShowFbCfg(v => !v)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:13, color:C.blue, padding:0, display:'flex', alignItems:'center', gap:4, marginBottom:6 }}>
+                {showFbCfg ? '▾' : '▸'} Config Firebase (console.firebase.google.com)
+              </button>
+              {showFbCfg && (
+                <>
+                  <textarea
+                    value={fbCfgText}
+                    onChange={e => setFbCfgText(e.target.value)}
+                    placeholder={'{\n  "apiKey": "AIzaSy...",\n  "authDomain": "xxx.firebaseapp.com",\n  "projectId": "xxx",\n  "storageBucket": "xxx.appspot.com",\n  "messagingSenderId": "123456",\n  "appId": "1:123456:web:abc"\n}'}
+                    rows={7}
+                    style={{ width:'100%', padding:'8px 10px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:12, fontFamily:'monospace', resize:'vertical', outline:'none', background:C.paper, boxSizing:'border-box' }}
+                  />
+                  <p style={{ fontSize:11, color:'#aaa', margin:'4px 0 0' }}>
+                    ⚠️ Règles Firestore à configurer : <code style={{ fontSize:10, background:'#f1eee5', padding:'1px 4px', borderRadius:3 }}>allow read, write: if true;</code>
+                  </p>
+                </>
+              )}
+            </div>
+
+            {/* Export / Import fichier */}
+            <div style={{ fontSize:12, color:'#888', marginBottom:8 }}>Sauvegarde manuelle <span style={{ color:'#bbb' }}>(fichier JSON — glisse-le ensuite dans ton Drive si tu veux)</span></div>
+            <div style={{ display:'flex', gap:8 }}>
+              <button
+                onClick={() => backupToFile()}
+                style={{ flex:1, padding:'9px 0', borderRadius:8, border:`1.5px solid ${C.blue}`, background:'#eef3fd', color:C.blue, fontSize:13, cursor:'pointer', fontWeight:600 }}>
+                ⬇️ Exporter
+              </button>
+              <button
+                onClick={() => restoreFromFile()}
+                style={{ flex:1, padding:'9px 0', borderRadius:8, border:`1.5px solid ${C.green}`, background:'#edfaed', color:C.green, fontSize:13, cursor:'pointer', fontWeight:600 }}>
+                ⬆️ Importer
+              </button>
+            </div>
+            <p style={{ fontSize:11, color:'#bbb', margin:'6px 0 0' }}>Le fichier contient toutes les conversations de la famille. Tu peux le stocker dans Google Drive, iCloud ou l'envoyer par message.</p>
+          </section>
+
+          {/* ── Mémoire & instructions personnelles ─────── */}
+          <section>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>🧠 Mémoire & instructions</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              {PROFILES.map(p => (
+                <div key={p.id}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                    <div style={{ width:22, height:22, borderRadius:'50%', background:p.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontFamily:"'Kalam',cursive", fontWeight:700, flexShrink:0 }}>{p.label}</div>
+                    <span style={{ fontSize:13, fontWeight:500 }}>{p.name}</span>
+                  </div>
+                  <textarea rows={2} value={s.profileContext?.[p.id] || ''} onChange={e => setS(prev => ({ ...prev, profileContext: { ...prev.profileContext, [p.id]: e.target.value } }))}
+                    placeholder={`Instructions personnalisées pour ${p.name}…`}
+                    style={{ width:'100%', padding:'7px 10px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:13, fontFamily:'Inter,sans-serif', resize:'vertical', outline:'none', background:C.paper, boxSizing:'border-box' }} />
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* ── Mode socratique ─────────────────────────── */}
+          <section>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>🎓 Mode socratique</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {['zya','zelie'].map(pid => {
+                const p = getProfile(pid);
+                return (
+                  <div key={pid} style={{ display:'flex', alignItems:'center', gap:12 }}>
+                    <div style={{ width:22, height:22, borderRadius:'50%', background:p?.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontFamily:"'Kalam',cursive", fontWeight:700, flexShrink:0 }}>{p?.label}</div>
+                    <span style={{ flex:1, fontSize:14 }}>{p?.name}</span>
+                    <button onClick={() => setS(prev => ({ ...prev, socraticMode: { ...prev.socraticMode, [pid]: !prev.socraticMode?.[pid] } }))}
+                      style={{ padding:'4px 12px', background: s.socraticMode?.[pid] ? C.purple : '#f1eee5', color: s.socraticMode?.[pid] ? 'white' : C.muted, border:`1.5px solid ${s.socraticMode?.[pid] ? C.purple : C.faint}`, borderRadius:20, fontSize:12, cursor:'pointer', fontWeight: s.socraticMode?.[pid] ? 600 : 400 }}>
+                      {s.socraticMode?.[pid] ? 'Activé' : 'Désactivé'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <p style={{ fontSize:11, color:'#aaa', margin:'8px 0 0' }}>Quand activé, l'IA guide par des questions au lieu de donner les réponses directement.</p>
+          </section>
+
+          {/* ── Limites quotidiennes ─────────────────────── */}
+          <section>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>⏱ Limites quotidiennes</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {PROFILES.map(p => (
+                <div key={p.id} style={{ display:'flex', alignItems:'center', gap:12 }}>
+                  <div style={{ width:22, height:22, borderRadius:'50%', background:p.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontFamily:"'Kalam',cursive", fontWeight:700, flexShrink:0 }}>{p.label}</div>
+                  <span style={{ flex:1, fontSize:14, fontWeight:500 }}>{p.name}</span>
+                  <input type="number" min={1} max={500} placeholder="∞"
+                    value={s.dailyLimits?.[p.id] ?? ''}
+                    onChange={e => setS(prev => ({ ...prev, dailyLimits: { ...prev.dailyLimits, [p.id]: e.target.value === '' ? null : Number(e.target.value) } }))}
+                    style={{ width:64, padding:'5px 8px', border:`1.5px solid ${C.faint}`, borderRadius:6, fontSize:14, textAlign:'right', outline:'none' }} />
+                  <span style={{ color:'#aaa', fontSize:11 }}>msg/jour</span>
+                </div>
+              ))}
+            </div>
+            <p style={{ fontSize:11, color:'#aaa', margin:'8px 0 0' }}>Laissez vide pour illimité.</p>
+          </section>
+
+          {/* ── Apparence (dark mode) ────────────────────── */}
+          <section>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>🌙 Apparence</div>
+            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+              <span style={{ flex:1, fontSize:14 }}>Mode sombre</span>
+              <button onClick={() => {
+                const isDark = document.body.classList.toggle('dark-mode');
+                localStorage.setItem('ricard_dark', isDark ? '1' : '');
+              }}
+                style={{ padding:'6px 16px', background: document.body.classList.contains('dark-mode') ? C.ink : '#f1eee5', color: document.body.classList.contains('dark-mode') ? 'white' : C.muted, border:`1.5px solid ${C.faint}`, borderRadius:20, fontSize:13, cursor:'pointer' }}>
+                {document.body.classList.contains('dark-mode') ? '☀️ Clair' : '🌙 Sombre'}
+              </button>
+            </div>
+          </section>
+
+          <div style={{ fontSize:13, color:'#555', background:'#f7f4ec', padding:'10px 12px', borderRadius:8 }}>
+            💡 Conseil : Haiku pour les enfants ($0.8/M), Sonnet pour les tâches complexes.
+          </div>
+        </div>
+        <div style={{ padding:'12px 18px', borderTop:`1.5px solid #e8e5dc`, display:'flex', gap:10 }}>
+          <button onClick={() => dispatch({ type:'TOGGLE_SETTINGS' })} style={{ flex:1, background:'#f1eee5', border:`1.5px solid ${C.faint}`, borderRadius:8, padding:'9px 0', cursor:'pointer', fontSize:14 }}>Annuler</button>
+          <button onClick={save} style={{ flex:2, background: saved ? C.green : C.ink, border:'none', borderRadius:8, padding:'9px 0', cursor:'pointer', fontSize:14, color:'white', fontWeight:600, transition:'background .2s' }}>
+            {saved ? '✓ Enregistré' : 'Enregistrer'}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─── Dashboard ────────────────────────────────────────────────
+function Dashboard() {
+  const { state, dispatch } = useApp();
+  const isMobile = useIsMobile();
+  if (!state.showDashboard) return null;
+
+  const costs = PROFILES.map(p => ({ ...p, spent: loadMonthCost(p.id), budget: state.settings.budgets?.[p.id] || 50 }));
+  const totalSpent = costs.reduce((a, p) => a + p.spent, 0);
+  const log = loadCostLog().slice(0, 25);
+
+  // Weekly digest
+  const now = Date.now();
+  const weekAgo = now - 7 * 24 * 3600 * 1000;
+  const fullLog = loadCostLog();
+  const weekLog = fullLog.filter(e => e.ts >= weekAgo);
+  const weekByProfile = PROFILES.map(p => {
+    const entries = weekLog.filter(e => e.profile === p.id);
+    const msgs = entries.length;
+    const cost = entries.reduce((a, e) => a + (e.cost || 0), 0);
+    return { ...p, msgs, cost };
+  });
+  const mostActive = weekByProfile.reduce((best, p) => p.msgs > best.msgs ? p : best, { msgs: -1, name:'—' });
+  const ts = state.tabs[state.tab];
+  const conv = ts?.convs.find(c => c.id === ts.activeId);
+
+  return (
+    <>
+      <div onClick={() => dispatch({ type:'TOGGLE_DASHBOARD' })} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.3)', zIndex:100 }} />
+      <div style={{ position:'fixed', top:'4%', left:'50%', transform:'translateX(-50%)', width: isMobile ? 'calc(100vw - 16px)' : 700, maxHeight: isMobile ? 'calc(92dvh - 56px - env(safe-area-inset-bottom, 0px))' : '90vh', background:'white', border:`2px solid ${C.ink}`, borderRadius:14, boxShadow:'6px 8px 0 rgba(0,0,0,.15)', zIndex:101, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+        <div style={{ padding:'14px 20px', borderBottom:`1.5px solid #e8e5dc`, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <span style={{ fontSize:17, fontWeight:700 }}>📊 Tokens & Coûts</span>
+          <button onClick={() => dispatch({ type:'TOGGLE_DASHBOARD' })} style={{ background:'none', border:'none', cursor:'pointer', fontSize:20, color:'#888' }}>✕</button>
+        </div>
+        <div style={{ overflow:'auto', padding:20, display:'flex', flexDirection:'column', gap:16 }}>
+          {conv && conv.totalCost > 0 && (
+            <div style={{ background:C.ink, borderRadius:12, padding:'16px 20px', display:'flex', alignItems:'center', gap:20 }}>
+              <div>
+                <div style={{ fontSize:10, color:'rgba(255,255,255,.5)', letterSpacing:1.5, textTransform:'uppercase', marginBottom:4 }}>Conversation actuelle</div>
+                <div style={{ fontSize:36, fontFamily:'monospace', fontWeight:700, color:C.yellow }}>${conv.totalCost.toFixed(5)}</div>
+                <div style={{ fontSize:12, color:'rgba(255,255,255,.5)', marginTop:2 }}>
+                  {((conv.totalIn+conv.totalOut)/1000).toFixed(1)}k tokens · {getModel(conv.model)?.name}
+                </div>
+              </div>
+              {state.streaming && <span className="streaming-dot" style={{ marginLeft:'auto', flexShrink:0, width:10, height:10 }} />}
+            </div>
+          )}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
+            {[
+              { label:'Dépensé ce mois', value:`$${totalSpent.toFixed(2)}`, sub:`sur $${costs.reduce((a,p)=>a+p.budget,0)} budget` },
+              { label:'Conversations', value: Object.values(state.tabs).reduce((a,t)=>a+(t?.convs?.length||0),0), sub:'tous profils' },
+              { label:'Modèle actif', value: getModel(conv?.model)?.name || '—', sub:'' },
+            ].map(s => (
+              <div key={s.label} style={{ border:`1.5px solid #e8e5dc`, borderRadius:10, padding:'12px 14px' }}>
+                <div style={{ fontSize:11, color:'#aaa' }}>{s.label}</div>
+                <div style={{ fontSize:20, fontWeight:700, margin:'4px 0 2px' }}>{s.value}</div>
+                <div style={{ fontSize:11, color:'#bbb' }}>{s.sub}</div>
+              </div>
+            ))}
+          </div>
+          <div>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>Par profil · ce mois</div>
+            {costs.map(p => {
+              const pct = Math.min(100, (p.spent/p.budget)*100);
+              return (
+                <div key={p.id} style={{ display:'flex', alignItems:'center', gap:12, marginBottom:8 }}>
+                  <div style={{ width:28, height:28, borderRadius:'50%', background:p.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontFamily:"'Kalam',cursive", fontWeight:700, flexShrink:0 }}>{p.label}</div>
+                  <span style={{ width:60, fontSize:13, fontWeight:500 }}>{p.name}</span>
+                  <div style={{ flex:1, height:8, background:'#f1eee5', borderRadius:999, overflow:'hidden' }}>
+                    <div style={{ height:'100%', width:`${pct}%`, background: pct>80 ? C.red : p.color, borderRadius:999 }} />
+                  </div>
+                  <span style={{ fontSize:12, fontWeight:600, minWidth:60, textAlign:'right' }}>${p.spent.toFixed(2)} <span style={{ color:'#bbb', fontWeight:400 }}>/ ${p.budget}</span></span>
+                </div>
+              );
+            })}
+          </div>
+          {/* Weekly digest */}
+          <div>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>📅 Cette semaine</div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:10, marginBottom:10 }}>
+              {weekByProfile.map(p => (
+                <div key={p.id} style={{ border:`1.5px solid #e8e5dc`, borderRadius:10, padding:'10px 12px', display:'flex', alignItems:'center', gap:10 }}>
+                  <div style={{ width:28, height:28, borderRadius:'50%', background:p.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontFamily:"'Kalam',cursive", fontWeight:700, flexShrink:0 }}>{p.label}</div>
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:600 }}>{p.name}</div>
+                    <div style={{ fontSize:11, color:'#aaa' }}>{p.msgs} msg · ${p.cost.toFixed(3)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {mostActive.msgs > 0 && (
+              <div style={{ fontSize:13, color:'#555', background:'#f7f4ec', padding:'8px 12px', borderRadius:8 }}>
+                🏆 Plus actif cette semaine : <strong>{mostActive.name}</strong> ({mostActive.msgs} messages)
+              </div>
+            )}
+          </div>
+
+          {log.length > 0 && (
+            <div>
+              <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>Journal des échanges</div>
+              <div style={{ border:`1px solid #e8e5dc`, borderRadius:8, overflow:'hidden', fontFamily:'monospace', fontSize:12 }}>
+                {log.map((e, i) => (
+                  <div key={i} style={{ display:'grid', gridTemplateColumns:'80px 60px 130px 1fr 70px', padding:'6px 12px', borderBottom: i<log.length-1 ? `1px solid #f0ede4` : 'none', background: i%2===0 ? 'white' : '#fafaf6', alignItems:'center', gap:4 }}>
+                    <span style={{ color:'#aaa' }}>{new Date(e.ts).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span>
+                    <span style={{ textTransform:'capitalize' }}>{e.profile}</span>
+                    <span style={{ color:C.blue }}>{getModel(e.model)?.name || e.model.split('/')[1]}</span>
+                    <span style={{ color:'#aaa' }}>↑{e.inputTokens} ↓{e.outputTokens}</span>
+                    <span style={{ textAlign:'right', fontWeight:700 }}>${e.cost.toFixed(5)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─── Artifact Panel ───────────────────────────────────────────
+function ArtifactPanel() {
+  const { state, dispatch } = useApp();
+  const [view, setView] = useState('preview'); // 'preview' | 'code'
+  const { artifact, showArtifact } = state;
+
+  if (!showArtifact || !artifact) return null;
+
+  const l = (artifact.lang || '').toLowerCase();
+  const isRenderable = RENDERABLE.includes(l);
+  const srcDoc = l === 'svg'
+    ? `<!DOCTYPE html><html><body style="margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f8f8f8">${artifact.content}</body></html>`
+    : artifact.content;
+
+  const download = () => {
+    const mime = DOWNLOADABLE_LANGS[l] || 'text/plain';
+    const blob = new Blob([artifact.content], { type: mime });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `ricard-design.${l}`; a.click(); URL.revokeObjectURL(a.href);
+  };
+
+  return (
+    <div style={{ width:480, minWidth:380, maxWidth:'45vw', borderLeft:`1.5px solid ${C.ink}`, display:'flex', flexDirection:'column', background:'white', flexShrink:0 }}>
+      {/* Header */}
+      <div style={{ padding:'8px 14px', borderBottom:`1px solid #e8e5dc`, display:'flex', alignItems:'center', gap:8, background:'#f7f4ec', flexShrink:0 }}>
+        <span style={{ fontSize:12, color:'#888', fontFamily:'monospace', flex:1 }}>
+          {l.toUpperCase()} · Artifact
+        </span>
+        {isRenderable && (
+          <div style={{ display:'flex', border:`1px solid #e0ddd4`, borderRadius:6, overflow:'hidden' }}>
+            {['preview','code'].map(v => (
+              <button key={v} onClick={() => setView(v)}
+                style={{ padding:'3px 10px', background: view===v ? C.ink : 'transparent', color: view===v ? 'white' : '#888', border:'none', cursor:'pointer', fontSize:11 }}>
+                {v === 'preview' ? '👁 Aperçu' : '</> Code'}
+              </button>
+            ))}
+          </div>
+        )}
+        <button onClick={download}
+          style={{ background:'none', border:`1px solid #e0ddd4`, borderRadius:6, padding:'3px 10px', fontSize:11, cursor:'pointer', color:'#555' }}>
+          ⬇ .{l}
+        </button>
+        <button onClick={() => dispatch({ type:'CLOSE_ARTIFACT' })}
+          style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, color:'#aaa', lineHeight:1, padding:'0 2px' }}>×</button>
+      </div>
+
+      {/* Content */}
+      <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
+        {isRenderable && view === 'preview' ? (
+          <iframe srcDoc={srcDoc} sandbox="allow-scripts allow-same-origin"
+            style={{ flex:1, border:'none', width:'100%' }} />
+        ) : (
+          <pre style={{ margin:0, padding:'16px', overflow:'auto', flex:1, fontSize:13, lineHeight:1.6, background:'#1e1e2e', color:'#e8e5dc' }}>
+            <code ref={el => {
+              if (el && window.Prism) {
+                el.textContent = artifact.content;
+                el.className = `language-${PRISM_LANG[l] || l}`;
+                window.Prism.highlightElement(el);
+              }
+            }} className={`language-${PRISM_LANG[l] || l}`}>{artifact.content}</code>
+          </pre>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Mobile Nav ───────────────────────────────────────────────
+function MobileNav() {
+  const { state, dispatch } = useApp();
+  return (
+    <nav className="mobile-nav">
+      {TAB_DEFS.map(t => {
+        const active = state.tab === t.id;
+        return (
+          <button key={t.id} className="mobile-nav-btn"
+            onClick={() => dispatch({ type:'SET_TAB', payload:t.id })}
+            style={{ color: active ? (t.color || C.ink) : C.muted, fontWeight: active ? 700 : 400 }}>
+            <span>{t.icon}</span>
+            <span>{t.label}</span>
+            {active && <div style={{ width:20, height:2, background: t.color || C.ink, borderRadius:999, marginTop:1 }} />}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+// ─── Layout ───────────────────────────────────────────────────
+function Layout() {
+  const { state } = useApp();
+  const isMobile = useIsMobile();
+  const [collapsed, setCollapsed] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => !!localStorage.getItem('ricard_dark'));
+  const TAB_MAP = { chat:<ChatTab/>, code:<CodeTab/>, design:<DesignTab/>, zya:<ZyaTab/>, zelie:<ZelieTab/>, famille:<FamilyTab/> };
+
+  // Apply dark mode class on mount and toggle
+  useEffect(() => {
+    if (darkMode) document.body.classList.add('dark-mode');
+    else document.body.classList.remove('dark-mode');
+    localStorage.setItem('ricard_dark', darkMode ? '1' : '');
+  }, [darkMode]);
+
+  const toggleDark = () => setDarkMode(v => !v);
+
+  return (
+    <div style={{ height:'100dvh', display:'flex', flexDirection:'column', overflow:'hidden', background:C.paper }}>
+      {/* Title bar — hidden on mobile */}
+      {!isMobile && (
+        <div style={{ height:28, background:'#eae6dc', borderBottom:`1px solid #d8d4ca`, display:'flex', alignItems:'center', padding:'0 14px', gap:10, flexShrink:0 }}>
+          <div style={{ display:'flex', gap:5 }}>
+            {[C.red, C.yellow, C.green].map(col => <div key={col} style={{ width:11, height:11, borderRadius:'50%', background:col, border:'1px solid rgba(0,0,0,.15)' }} />)}
+          </div>
+          <span style={{ fontSize:12, color:'#888', fontFamily:"'Kalam',cursive", flex:1 }}>Ricard AI</span>
+          <button onClick={toggleDark} title={darkMode ? 'Mode clair' : 'Mode sombre'}
+            style={{ background:'none', border:'none', cursor:'pointer', fontSize:13, color:'#999', padding:'0 4px' }}
+            onMouseEnter={e => e.currentTarget.style.color = C.ink}
+            onMouseLeave={e => e.currentTarget.style.color = '#999'}>
+            {darkMode ? '☀️' : '🌙'}
+          </button>
+          <button
+            title="Télécharger l'application"
+            onClick={() => {
+              const html = document.documentElement.outerHTML;
+              const blob = new Blob([html], { type: 'text/html' });
+              const a = document.createElement('a');
+              a.href = URL.createObjectURL(blob);
+              a.download = 'Ricard AI.html';
+              a.click();
+              URL.revokeObjectURL(a.href);
+            }}
+            style={{ background:'none', border:'none', cursor:'pointer', fontSize:11, color:'#999', padding:'0 4px', display:'flex', alignItems:'center', gap:3 }}
+            onMouseEnter={e => e.currentTarget.style.color = C.ink}
+            onMouseLeave={e => e.currentTarget.style.color = '#999'}
+          >
+            ⬇ télécharger
+          </button>
+        </div>
+      )}
+      <div style={{ flex:1, display:'flex', minHeight:0, paddingBottom: isMobile ? 'calc(56px + env(safe-area-inset-bottom, 0px))' : 0 }}>
+        {!isMobile && <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(v => !v)} />}
+        <main style={{ flex:1, display:'flex', minWidth:0, minHeight:0, overflow:'hidden' }}>
+          <div style={{ flex:1, display:'flex', flexDirection:'column', minWidth:0, minHeight:0, overflow:'hidden' }}>
+            {TAB_MAP[state.tab] || <ChatTab/>}
+          </div>
+          {!isMobile && <ArtifactPanel />}
+        </main>
+      </div>
+      {isMobile && <MobileNav />}
+      <ModelPicker />
+      <Settings />
+      <Dashboard />
+      <SearchModal />
+      <CompareModal />
+    </div>
+  );
+}
+
+// ─── Error Boundary ──────────────────────────────────────────
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { crashed: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { crashed: true, error };
+  }
+  componentDidCatch(error, info) {
+    console.error('[Ricard AI] Crash React :', error, info);
+  }
+  render() {
+    if (!this.state.crashed) return this.props.children;
+    const err = this.state.error;
+    return (
+      <div style={{
+        display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+        height:'100dvh', padding:32, fontFamily:'Inter,system-ui,sans-serif',
+        background:'#fbfaf6', color:'#1a1a1a', textAlign:'center', gap:16
+      }}>
+        <div style={{ fontSize:48 }}>😵</div>
+        <div style={{ fontSize:20, fontWeight:700 }}>Oups, quelque chose a planté !</div>
+        <div style={{
+          fontSize:13, color:'#888', maxWidth:420, background:'#f1eee5',
+          borderRadius:10, padding:'12px 16px', fontFamily:'monospace',
+          wordBreak:'break-word', textAlign:'left'
+        }}>
+          {err?.message || String(err)}
+        </div>
+        <button
+          onClick={() => { this.setState({ crashed:false, error:null }); }}
+          style={{
+            marginTop:8, padding:'10px 24px', borderRadius:8, border:'2px solid #1a1a1a',
+            background:'#1a1a1a', color:'white', fontSize:15, fontWeight:600,
+            cursor:'pointer', fontFamily:'inherit'
+          }}
+        >
+          🔄 Réessayer
+        </button>
+        <button
+          onClick={() => { localStorage.clear(); window.location.reload(); }}
+          style={{
+            padding:'8px 20px', borderRadius:8, border:'1.5px solid #ccc',
+            background:'transparent', color:'#888', fontSize:13,
+            cursor:'pointer', fontFamily:'inherit'
+          }}
+        >
+          Réinitialiser l'app
+        </button>
+      </div>
+    );
+  }
+}
+
+// ─── Root ─────────────────────────────────────────────────────
+function App() {
+  const { state } = useApp();
+  return (
+    <>
+      {state.profile ? <Layout /> : <ProfileSelector />}
+      <PinEntry />
+    </>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <ErrorBoundary>
+    <AppProvider>
+      <App />
+    </AppProvider>
+  </ErrorBoundary>
+);
+</script>
+
+<script>
+// ── Service Worker registration ──
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').then(reg => {
+      console.log('[SW] registered, scope:', reg.scope);
+
+      // Si un nouveau SW est déjà en attente → le forcer à prendre le contrôle
+      const forceUpdate = (sw) => {
+        sw.postMessage('SKIP_WAITING');
+        // Recharger une seule fois (flag sessionStorage anti-boucle)
+        if (!sessionStorage.getItem('sw-reloaded')) {
+          sessionStorage.setItem('sw-reloaded', '1');
+          window.location.reload();
+        }
+      };
+
+      if (reg.waiting) {
+        forceUpdate(reg.waiting);
+      }
+
+      reg.addEventListener('updatefound', () => {
+        const sw = reg.installing;
+        if (!sw) return;
+        sw.addEventListener('statechange', () => {
+          if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+            forceUpdate(sw);
+          }
+        });
+      });
+
+    }).catch(err => console.log('[SW] registration failed:', err));
+  });
+
+  // Nettoyer le flag après chargement réussi
+  window.addEventListener('load', () => {
+    sessionStorage.removeItem('sw-reloaded');
+  });
+}
+</script>
+</body>
+</html>
