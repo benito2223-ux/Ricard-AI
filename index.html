@@ -367,6 +367,156 @@ const _modelCache = {};
 function getModel(id) {
   return MODELS.find(m => m.id === id) || _modelCache[id] || (id ? { id, name: id.split('/').pop(), provider: id.split('/')[0], inCost: 0, outCost: 0, ctx:'?', speed:2 } : MODELS[2]);
 }
+
+// ─── Cache global des modèles OpenRouter live ─────────────────
+// Partagé entre CompareModal, Settings et ModelPicker
+let _liveModelsCache = null;   // null | 'loading' | Model[]
+let _liveModelsCbs  = [];      // callbacks en attente
+
+async function fetchAllModels() {
+  if (Array.isArray(_liveModelsCache)) return _liveModelsCache;
+  if (_liveModelsCache === 'loading') {
+    return new Promise(res => _liveModelsCbs.push(res));
+  }
+  _liveModelsCache = 'loading';
+  try {
+    const r = await fetch('https://openrouter.ai/api/v1/models');
+    const { data } = await r.json();
+    const mapped = data
+      .filter(m => m.id && m.name)
+      .sort((a, b) => {
+        const pa = parseFloat(a.pricing?.prompt || 0) * 1e6;
+        const pb = parseFloat(b.pricing?.prompt || 0) * 1e6;
+        return pa - pb; // gratuits en premier
+      })
+      .map(m => ({
+        id: m.id,
+        name: m.name,
+        provider: m.id.split('/')[0],
+        cat: 'live',
+        inCost: parseFloat(m.pricing?.prompt || 0) * 1e6,
+        outCost: parseFloat(m.pricing?.completion || 0) * 1e6,
+        ctx: m.context_length
+          ? m.context_length >= 1e6 ? `${Math.round(m.context_length/1e6)}M`
+          : `${Math.round(m.context_length/1000)}k`
+          : '?',
+        vision: (m.architecture?.modality || '').includes('image'),
+        speed: 2,
+      }));
+    mapped.forEach(m => { _modelCache[m.id] = m; });
+    _liveModelsCache = mapped;
+    _liveModelsCbs.forEach(cb => cb(mapped));
+    _liveModelsCbs = [];
+    return mapped;
+  } catch {
+    _liveModelsCache = null; // reset pour retry
+    _liveModelsCbs.forEach(cb => cb(null));
+    _liveModelsCbs = [];
+    return null;
+  }
+}
+
+// Hook React pour accéder aux modèles live (avec fallback local)
+function useLiveModels() {
+  const [models, setModels] = useState(() =>
+    Array.isArray(_liveModelsCache) ? _liveModelsCache : MODELS
+  );
+  const [status, setStatus] = useState(() =>
+    Array.isArray(_liveModelsCache) ? 'done' : 'idle'
+  );
+  useEffect(() => {
+    if (Array.isArray(_liveModelsCache)) { setModels(_liveModelsCache); setStatus('done'); return; }
+    setStatus('loading');
+    fetchAllModels().then(m => {
+      if (m) { setModels(m); setStatus('done'); }
+      else setStatus('error');
+    });
+  }, []);
+  return { models, status };
+}
+
+// ─── ModelSelectInline — picker inline pour les Settings ──────
+// (pas de position:absolute → pas de clipping dans le scroll modal)
+function ModelSelectInline({ value, onChange, allModels, status }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const selected = allModels.find(m => m.id === value) || getModel(value);
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return allModels.slice(0, 60);
+    return allModels.filter(m =>
+      m.name?.toLowerCase().includes(q) ||
+      m.id?.toLowerCase().includes(q) ||
+      m.provider?.toLowerCase().includes(q)
+    ).slice(0, 100);
+  }, [search, allModels]);
+
+  return (
+    <div style={{ flex:1, minWidth:0 }}>
+      {/* Bouton trigger */}
+      <button onClick={() => { setOpen(v => !v); setSearch(''); }}
+        style={{ width:'100%', padding:'6px 10px', border:`1.5px solid ${open ? C.blue : C.faint}`, borderRadius:8, background:'white', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'space-between', gap:6, fontSize:12, textAlign:'left', transition:'border-color .15s' }}>
+        <div style={{ minWidth:0, flex:1 }}>
+          <span style={{ fontWeight:600, color:C.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', display:'block' }}>
+            {selected?.name || value}
+          </span>
+          <span style={{ fontSize:10, color:'#aaa' }}>
+            {selected?.provider || ''}
+            {selected?.inCost === 0 ? ' · Gratuit' : selected?.inCost ? ` · $${selected.inCost}/M` : ''}
+            {status === 'loading' ? ' · chargement…' : status === 'done' ? ` · ${allModels.length} dispo` : ''}
+          </span>
+        </div>
+        <span style={{ color:'#aaa', flexShrink:0, fontSize:10 }}>{open ? '▴' : '▾'}</span>
+      </button>
+
+      {/* Liste inline (s'étend dans le flux, pas de position absolute) */}
+      {open && (
+        <div style={{ border:`1.5px solid ${C.blue}`, borderTop:'none', borderRadius:'0 0 8px 8px', overflow:'hidden', marginTop:-2 }}>
+          {/* Champ recherche */}
+          <div style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 10px', background:'#f7f4ec', borderBottom:`1px solid #e8e5dc` }}>
+            <span style={{ color:'#aaa', fontSize:12 }}>🔍</span>
+            <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
+              placeholder={`Chercher parmi ${allModels.length} modèles…`}
+              style={{ flex:1, border:'none', outline:'none', fontSize:12, background:'transparent', color:C.ink }} />
+            {search && <button onClick={() => setSearch('')} style={{ background:'none', border:'none', cursor:'pointer', color:'#aaa', fontSize:13, padding:0, lineHeight:1 }}>×</button>}
+          </div>
+          {/* Liste scrollable — hauteur fixe */}
+          <div style={{ maxHeight:200, overflowY:'auto', background:'white' }}>
+            {filtered.length === 0 && (
+              <div style={{ padding:'12px', textAlign:'center', color:'#aaa', fontSize:12 }}>Aucun résultat</div>
+            )}
+            {filtered.map(m => {
+              const isCur = m.id === value;
+              return (
+                <button key={m.id}
+                  onClick={() => { onChange(m.id); setOpen(false); setSearch(''); }}
+                  style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'6px 10px', width:'100%', background: isCur ? '#fffaee' : 'transparent', border:'none', borderBottom:`1px solid #f7f4ec`, cursor:'pointer', textAlign:'left', gap:8 }}
+                  onMouseEnter={e => { if (!isCur) e.currentTarget.style.background='#f9f7f2'; }}
+                  onMouseLeave={e => { if (!isCur) e.currentTarget.style.background = isCur ? '#fffaee' : 'transparent'; }}>
+                  <div style={{ minWidth:0, flex:1 }}>
+                    <div style={{ fontSize:12, fontWeight: isCur ? 700 : 400, color:C.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      {isCur ? '✓ ' : ''}{m.name}
+                    </div>
+                    <div style={{ fontSize:10, color:'#aaa' }}>{m.provider} · {m.ctx || '?'}</div>
+                  </div>
+                  <span style={{ fontSize:11, fontWeight:600, color: m.inCost === 0 ? C.green : '#888', flexShrink:0 }}>
+                    {m.inCost === 0 ? 'Gratuit' : m.inCost ? `$${m.inCost}/M` : '?'}
+                  </span>
+                </button>
+              );
+            })}
+            {!search && allModels.length > 60 && (
+              <div style={{ padding:'6px 10px', fontSize:10, color:'#bbb', textAlign:'center' }}>
+                Tape pour chercher parmi {allModels.length} modèles
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 function estimateCost(modelId, inTk, outTk) {
   const m = getModel(modelId);
   return (inTk / 1e6) * (m.inCost || 0) + (outTk / 1e6) * (m.outCost || 0);
@@ -2292,51 +2442,13 @@ function CompareModal() {
   const [resB, setResB] = useState('');
   const [loadingA, setLoadingA] = useState(false);
   const [loadingB, setLoadingB] = useState(false);
-  const [allModels, setAllModels] = useState(MODELS); // commence avec la sélection locale
-  const [fetchStatus, setFetchStatus] = useState('idle'); // idle | loading | done | error
+  const { models: allModels, status: fetchStatus } = useLiveModels(); // cache partagé
   const isMobile = useIsMobile();
 
   useEffect(() => {
     const h = e => { if (e.key === 'Escape') dispatch({ type:'TOGGLE_COMPARE' }); };
     window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
   }, []);
-
-  // Charge la liste complète OpenRouter dès l'ouverture
-  useEffect(() => {
-    if (!state.showCompare || fetchStatus !== 'idle') return;
-    setFetchStatus('loading');
-    fetch('https://openrouter.ai/api/v1/models')
-      .then(r => r.json())
-      .then(({ data }) => {
-        const mapped = data
-          .filter(m => m.id && m.name)
-          .sort((a, b) => {
-            // Gratuits en premier, puis par prix croissant
-            const pa = parseFloat(a.pricing?.prompt || 0) * 1e6;
-            const pb = parseFloat(b.pricing?.prompt || 0) * 1e6;
-            return pa - pb;
-          })
-          .map(m => ({
-            id: m.id,
-            name: m.name,
-            provider: m.id.split('/')[0],
-            cat: 'live',
-            inCost: parseFloat(m.pricing?.prompt || 0) * 1e6,
-            outCost: parseFloat(m.pricing?.completion || 0) * 1e6,
-            ctx: m.context_length
-              ? m.context_length >= 1e6 ? `${Math.round(m.context_length/1e6)}M`
-              : `${Math.round(m.context_length/1000)}k`
-              : '?',
-            vision: (m.architecture?.modality || '').includes('image'),
-            note: '',
-            speed: 2,
-          }));
-        mapped.forEach(m => { _modelCache[m.id] = m; });
-        setAllModels(mapped);
-        setFetchStatus('done');
-      })
-      .catch(() => setFetchStatus('error'));
-  }, [state.showCompare]);
 
   if (!state.showCompare) return null;
 
@@ -2637,6 +2749,7 @@ function Settings() {
   const [fbCfgText, setFbCfgText] = useState(() => {
     const c = loadFbConfig(); return c ? JSON.stringify(c, null, 2) : '';
   });
+  const { models: liveModels, status: liveStatus } = useLiveModels();
   const [fbStatus, setFbStatus] = useState(() => CLOUD.enabled ? 'ok' : 'off');
   const [fbError, setFbError] = useState('');
   const [showFbCfg, setShowFbCfg] = useState(false);
@@ -2722,33 +2835,32 @@ function Settings() {
 
           {/* ── Modèles par défaut ──────────────────────── */}
           <section>
-            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>🤖 Modèles par défaut</div>
-            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:4 }}>🤖 Modèles par défaut</div>
+            <div style={{ fontSize:11, color:'#aaa', marginBottom:10, display:'flex', alignItems:'center', gap:6 }}>
+              {liveStatus === 'loading' && <><span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background:C.orange, animation:'pulse 1s infinite' }} /> Chargement des modèles OpenRouter…</>}
+              {liveStatus === 'done'    && <><span style={{ color:C.green }}>✓</span> {liveModels.length} modèles disponibles (OpenRouter live)</>}
+              {liveStatus === 'error'   && <><span style={{ color:C.red }}>⚠</span> Liste locale ({MODELS.length} modèles)</>}
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
               {[
-                { tab:'chat',   label:'💬 Chat',          },
-                { tab:'code',   label:'⌨️ Code',          },
-                { tab:'design', label:'🎨 Design',        },
-                { tab:'zya',    label:'🌟 Zya (Nova)',    },
-                { tab:'zelie',  label:'🌸 Zélie (Pixel)', },
+                { tab:'chat',   label:'💬 Chat'          },
+                { tab:'code',   label:'⌨️ Code'          },
+                { tab:'design', label:'🎨 Design'        },
+                { tab:'zya',    label:'🌟 Zya (Nova)'    },
+                { tab:'zelie',  label:'🌸 Zélie (Pixel)' },
               ].map(({ tab, label }) => (
-                <div key={tab} style={{ display:'flex', alignItems:'center', gap:10 }}>
-                  <span style={{ fontSize:13, flex:'0 0 120px', color:C.ink }}>{label}</span>
-                  <select
+                <div key={tab}>
+                  <div style={{ fontSize:12, fontWeight:600, color:C.ink, marginBottom:4 }}>{label}</div>
+                  <ModelSelectInline
                     value={s.defaultModels?.[tab] ?? DEFAULT_MODELS_PER_TAB[tab]}
-                    onChange={e => setS(p => ({ ...p, defaultModels: { ...(p.defaultModels ?? DEFAULT_MODELS_PER_TAB), [tab]: e.target.value } }))}
-                    style={{ flex:1, padding:'6px 8px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:12, background:C.paper, outline:'none', color:C.ink }}>
-                    {Object.entries(
-                      MODELS.reduce((acc, m) => { (acc[m.cat] = acc[m.cat]||[]).push(m); return acc; }, {})
-                    ).map(([cat, models]) => (
-                      <optgroup key={cat} label={cat.charAt(0).toUpperCase()+cat.slice(1)}>
-                        {models.map(m => <option key={m.id} value={m.id}>{m.name} {m.inCost===0 ? '(gratuit)' : `($${m.inCost}/M)`}</option>)}
-                      </optgroup>
-                    ))}
-                  </select>
+                    onChange={val => setS(p => ({ ...p, defaultModels: { ...(p.defaultModels ?? DEFAULT_MODELS_PER_TAB), [tab]: val } }))}
+                    allModels={liveModels}
+                    status={liveStatus}
+                  />
                 </div>
               ))}
             </div>
-            <p style={{ fontSize:11, color:'#aaa', margin:'8px 0 0' }}>S'applique aux nouvelles conversations. Les conversations existantes gardent leur modèle.</p>
+            <p style={{ fontSize:11, color:'#aaa', margin:'10px 0 0' }}>S'applique aux nouvelles conversations. Les conversations existantes gardent leur modèle.</p>
           </section>
 
           {/* ── Section Cloud ───────────────────────────── */}
