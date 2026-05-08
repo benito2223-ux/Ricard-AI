@@ -2191,6 +2191,98 @@ function SearchModal() {
 }
 
 // ─── Compare Modal ─────────────────────────────────────────────
+// Mini-picker searchable utilisé dans chaque colonne modèle
+function ModelSlot({ label, selected, onSelect, allModels, loading }) {
+  const [search, setSearch] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  // Fermer au clic extérieur
+  useEffect(() => {
+    if (!open) return;
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return allModels.slice(0, 80); // max 80 sans recherche
+    return allModels.filter(m =>
+      m.name?.toLowerCase().includes(q) ||
+      m.id?.toLowerCase().includes(q) ||
+      m.provider?.toLowerCase().includes(q)
+    ).slice(0, 100);
+  }, [search, allModels]);
+
+  const selectedModel = allModels.find(m => m.id === selected) || getModel(selected);
+
+  return (
+    <div ref={ref} style={{ flex:1, position:'relative' }}>
+      <div style={{ fontSize:11, color:'#888', marginBottom:4, fontWeight:700, letterSpacing:.8, textTransform:'uppercase' }}>
+        Modèle {label} {loading && <span className="streaming-dot" style={{ display:'inline-block', width:5, height:5, marginLeft:4 }} />}
+      </div>
+      {/* Trigger */}
+      <button onClick={() => setOpen(v => !v)}
+        style={{ width:'100%', padding:'8px 12px', border:`1.5px solid ${open ? C.blue : C.faint}`, borderRadius:8, background:'white', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, fontSize:13, textAlign:'left', transition:'border-color .15s' }}>
+        <div style={{ minWidth:0 }}>
+          <div style={{ fontWeight:600, color:C.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+            {selectedModel?.name || selected}
+          </div>
+          <div style={{ fontSize:11, color:'#aaa' }}>
+            {selectedModel?.provider || ''}{selectedModel?.inCost === 0 ? ' · Gratuit' : selectedModel?.inCost ? ` · $${selectedModel.inCost}/M` : ''}
+          </div>
+        </div>
+        <span style={{ color:'#aaa', flexShrink:0 }}>▾</span>
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div style={{ position:'absolute', top:'100%', left:0, right:0, zIndex:300, background:'white', border:`2px solid ${C.ink}`, borderRadius:10, boxShadow:'4px 6px 0 rgba(0,0,0,.12)', marginTop:4, display:'flex', flexDirection:'column', maxHeight:320, overflow:'hidden' }}>
+          {/* Search */}
+          <div style={{ padding:'8px 10px', borderBottom:`1px solid #f0ede4`, display:'flex', alignItems:'center', gap:6, background:'#f9f7f2', flexShrink:0 }}>
+            <span style={{ color:'#aaa', fontSize:13 }}>🔍</span>
+            <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
+              placeholder={`Chercher parmi ${allModels.length} modèles…`}
+              style={{ flex:1, border:'none', outline:'none', fontSize:13, background:'transparent', color:C.ink }} />
+            {search && <button onClick={() => setSearch('')} style={{ background:'none', border:'none', cursor:'pointer', color:'#aaa', fontSize:14, padding:0 }}>×</button>}
+          </div>
+          {/* List */}
+          <div style={{ overflow:'auto', flex:1 }}>
+            {filtered.length === 0 && (
+              <div style={{ padding:20, textAlign:'center', color:'#aaa', fontSize:13 }}>Aucun modèle trouvé</div>
+            )}
+            {filtered.map(m => {
+              const isCur = m.id === selected;
+              return (
+                <button key={m.id} onClick={() => { onSelect(m.id); setOpen(false); setSearch(''); }}
+                  style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 12px', width:'100%', background: isCur ? '#fffaee' : 'transparent', border:'none', borderBottom:`1px solid #f7f4ec`, cursor:'pointer', textAlign:'left', gap:8 }}
+                  onMouseEnter={e => { if (!isCur) e.currentTarget.style.background='#f9f7f2'; }}
+                  onMouseLeave={e => { if (!isCur) e.currentTarget.style.background = isCur ? '#fffaee' : 'transparent'; }}>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontSize:13, fontWeight: isCur ? 700 : 400, color:C.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      {isCur ? '✓ ' : ''}{m.name}
+                    </div>
+                    <div style={{ fontSize:11, color:'#aaa' }}>{m.provider} · {m.ctx || '?'}</div>
+                  </div>
+                  <div style={{ flexShrink:0, fontSize:12, fontWeight:600, color: m.inCost === 0 ? C.green : '#555' }}>
+                    {m.inCost === 0 ? 'Gratuit' : m.inCost ? `$${m.inCost}/M` : '?'}
+                  </div>
+                </button>
+              );
+            })}
+            {!search && allModels.length > 80 && (
+              <div style={{ padding:'8px 12px', textAlign:'center', fontSize:11, color:'#aaa' }}>
+                Tape pour chercher parmi {allModels.length} modèles
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CompareModal() {
   const { state, dispatch } = useApp();
   const [modelA, setModelA] = useState(DEFAULT_MODEL);
@@ -2200,6 +2292,8 @@ function CompareModal() {
   const [resB, setResB] = useState('');
   const [loadingA, setLoadingA] = useState(false);
   const [loadingB, setLoadingB] = useState(false);
+  const [allModels, setAllModels] = useState(MODELS); // commence avec la sélection locale
+  const [fetchStatus, setFetchStatus] = useState('idle'); // idle | loading | done | error
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -2207,69 +2301,139 @@ function CompareModal() {
     window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
   }, []);
 
+  // Charge la liste complète OpenRouter dès l'ouverture
+  useEffect(() => {
+    if (!state.showCompare || fetchStatus !== 'idle') return;
+    setFetchStatus('loading');
+    fetch('https://openrouter.ai/api/v1/models')
+      .then(r => r.json())
+      .then(({ data }) => {
+        const mapped = data
+          .filter(m => m.id && m.name)
+          .sort((a, b) => {
+            // Gratuits en premier, puis par prix croissant
+            const pa = parseFloat(a.pricing?.prompt || 0) * 1e6;
+            const pb = parseFloat(b.pricing?.prompt || 0) * 1e6;
+            return pa - pb;
+          })
+          .map(m => ({
+            id: m.id,
+            name: m.name,
+            provider: m.id.split('/')[0],
+            cat: 'live',
+            inCost: parseFloat(m.pricing?.prompt || 0) * 1e6,
+            outCost: parseFloat(m.pricing?.completion || 0) * 1e6,
+            ctx: m.context_length
+              ? m.context_length >= 1e6 ? `${Math.round(m.context_length/1e6)}M`
+              : `${Math.round(m.context_length/1000)}k`
+              : '?',
+            vision: (m.architecture?.modality || '').includes('image'),
+            note: '',
+            speed: 2,
+          }));
+        mapped.forEach(m => { _modelCache[m.id] = m; });
+        setAllModels(mapped);
+        setFetchStatus('done');
+      })
+      .catch(() => setFetchStatus('error'));
+  }, [state.showCompare]);
+
   if (!state.showCompare) return null;
 
+  const running = loadingA || loadingB;
+
   const runCompare = async () => {
-    if (!prompt.trim() || !state.settings.apiKey) return;
+    if (!prompt.trim() || !state.settings.apiKey || running) return;
     setResA(''); setResB('');
     setLoadingA(true); setLoadingB(true);
     const msgs = [{ role:'user', content: prompt.trim() }];
     streamChat({ apiKey: state.settings.apiKey, model: modelA, messages: msgs,
       onChunk: (_, full) => setResA(full),
-      onDone: ({ text }) => { setResA(text); setLoadingA(false); },
-      onError: (e) => { setResA('⚠️ ' + e); setLoadingA(false); },
+      onDone: ({ text }) => { setResA(text || '(vide)'); setLoadingA(false); },
+      onError: e  => { setResA('⚠️ ' + e); setLoadingA(false); },
     });
     streamChat({ apiKey: state.settings.apiKey, model: modelB, messages: msgs,
       onChunk: (_, full) => setResB(full),
-      onDone: ({ text }) => { setResB(text); setLoadingB(false); },
-      onError: (e) => { setResB('⚠️ ' + e); setLoadingB(false); },
+      onDone: ({ text }) => { setResB(text || '(vide)'); setLoadingB(false); },
+      onError: e  => { setResB('⚠️ ' + e); setLoadingB(false); },
     });
   };
 
   return (
     <>
       <div onClick={() => dispatch({ type:'TOGGLE_COMPARE' })} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.35)', zIndex:200 }} />
-      <div style={{ position:'fixed', top:'4%', left:'50%', transform:'translateX(-50%)', width: isMobile ? 'calc(100vw - 16px)' : 800, maxHeight:'90vh', background:'white', border:`2px solid ${C.ink}`, borderRadius:14, boxShadow:'6px 8px 0 rgba(0,0,0,.15)', zIndex:201, display:'flex', flexDirection:'column', overflow:'hidden' }}>
-        <div style={{ padding:'12px 18px', borderBottom:`1.5px solid #e8e5dc`, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-          <span style={{ fontSize:16, fontWeight:700 }}>⚡ Comparaison de modèles</span>
+      <div style={{ position:'fixed', top:'2%', left:'50%', transform:'translateX(-50%)', width: isMobile ? 'calc(100vw - 12px)' : 900, maxHeight:'96vh', background:'white', border:`2px solid ${C.ink}`, borderRadius:14, boxShadow:'6px 8px 0 rgba(0,0,0,.15)', zIndex:201, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+
+        {/* Header */}
+        <div style={{ padding:'10px 16px', borderBottom:`1.5px solid #e8e5dc`, display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <span style={{ fontSize:16, fontWeight:700 }}>⚡ Comparaison de modèles</span>
+            {fetchStatus === 'loading' && (
+              <span style={{ fontSize:11, color:'#aaa', background:'#f7f4ec', padding:'2px 8px', borderRadius:999 }}>
+                ⏳ Chargement de tous les modèles…
+              </span>
+            )}
+            {fetchStatus === 'done' && (
+              <span style={{ fontSize:11, color:C.green, background:'#edfaed', padding:'2px 8px', borderRadius:999 }}>
+                ✓ {allModels.length} modèles disponibles
+              </span>
+            )}
+            {fetchStatus === 'error' && (
+              <span style={{ fontSize:11, color:C.red, background:'#fdf0f0', padding:'2px 8px', borderRadius:999 }}>
+                ⚠️ Liste locale ({MODELS.length} modèles)
+              </span>
+            )}
+          </div>
           <button onClick={() => dispatch({ type:'TOGGLE_COMPARE' })} style={{ background:'none', border:'none', cursor:'pointer', fontSize:20, color:'#888' }}>✕</button>
         </div>
-        <div style={{ padding:'14px 18px', borderBottom:`1px solid #e8e5dc`, display:'flex', flexDirection: isMobile ? 'column' : 'row', gap:12 }}>
-          <div style={{ flex:1 }}>
-            <div style={{ fontSize:11, color:'#888', marginBottom:4, fontWeight:600 }}>MODÈLE A</div>
-            <select value={modelA} onChange={e => setModelA(e.target.value)}
-              style={{ width:'100%', padding:'6px 10px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:13, background:C.paper, outline:'none' }}>
-              {MODELS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
-          </div>
-          <div style={{ flex:1 }}>
-            <div style={{ fontSize:11, color:'#888', marginBottom:4, fontWeight:600 }}>MODÈLE B</div>
-            <select value={modelB} onChange={e => setModelB(e.target.value)}
-              style={{ width:'100%', padding:'6px 10px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:13, background:C.paper, outline:'none' }}>
-              {MODELS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
-          </div>
+
+        {/* Model pickers */}
+        <div style={{ padding:'12px 16px', borderBottom:`1px solid #e8e5dc`, display:'flex', flexDirection: isMobile ? 'column' : 'row', gap:12, flexShrink:0, zIndex:10, position:'relative' }}>
+          <ModelSlot label="A" selected={modelA} onSelect={setModelA} allModels={allModels} loading={loadingA} />
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'center', color:'#ccc', fontSize:20, flexShrink:0, paddingTop: isMobile ? 0 : 20 }}>vs</div>
+          <ModelSlot label="B" selected={modelB} onSelect={setModelB} allModels={allModels} loading={loadingB} />
         </div>
-        <div style={{ padding:'12px 18px', borderBottom:`1px solid #e8e5dc`, display:'flex', gap:8 }}>
-          <textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows={2}
-            placeholder="Entrez votre question pour les deux modèles…"
-            style={{ flex:1, padding:'8px 12px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:14, fontFamily:'Inter,sans-serif', resize:'none', outline:'none' }} />
-          <button onClick={runCompare} disabled={!prompt.trim() || loadingA || loadingB}
-            style={{ background: prompt.trim() ? C.ink : C.faint, border:'none', borderRadius:8, color:'white', padding:'0 20px', fontSize:14, cursor: prompt.trim() ? 'pointer' : 'not-allowed', fontWeight:600, flexShrink:0 }}>
-            {loadingA || loadingB ? '⏳' : 'Envoyer'}
+
+        {/* Prompt input */}
+        <div style={{ padding:'10px 16px', borderBottom:`1px solid #e8e5dc`, display:'flex', gap:8, flexShrink:0 }}>
+          <textarea value={prompt} onChange={e => setPrompt(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); runCompare(); } }}
+            rows={2} placeholder="Ta question pour les deux modèles… (Ctrl+Entrée pour envoyer)"
+            style={{ flex:1, padding:'8px 12px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:14, fontFamily:'Inter,sans-serif', resize:'none', outline:'none', background:C.paper }} />
+          <button onClick={runCompare} disabled={!prompt.trim() || running}
+            style={{ background: prompt.trim() && !running ? C.ink : C.faint, border:'none', borderRadius:8, color:'white', padding:'0 20px', fontSize:14, cursor: prompt.trim() && !running ? 'pointer' : 'not-allowed', fontWeight:600, flexShrink:0, minWidth:80 }}>
+            {running ? '⏳' : '↑ Envoyer'}
           </button>
         </div>
-        <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection: isMobile ? 'column' : 'row', minHeight:200 }}>
-          {[{model: modelA, res: resA, loading: loadingA, label:'A'}, {model: modelB, res: resB, loading: loadingB, label:'B'}].map(({model, res, loading, label}) => (
-            <div key={label} style={{ flex:1, padding:'14px 16px', borderRight: label==='A' && !isMobile ? `1px solid #e8e5dc` : 'none', borderTop: label==='B' && isMobile ? `1px solid #e8e5dc` : 'none', overflow:'auto' }}>
-              <div style={{ fontSize:11, fontWeight:700, color:'#888', marginBottom:8 }}>
-                {getModel(model)?.name || model} {loading && <span className="streaming-dot" style={{ display:'inline-block', width:6, height:6, marginLeft:6 }} />}
+
+        {/* Responses */}
+        <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection: isMobile ? 'column' : 'row', minHeight:0 }}>
+          {[
+            { model:modelA, res:resA, loading:loadingA, label:'A' },
+            { model:modelB, res:resB, loading:loadingB, label:'B' },
+          ].map(({ model, res, loading, label }) => {
+            const info = allModels.find(m => m.id === model) || getModel(model);
+            return (
+              <div key={label} style={{ flex:1, display:'flex', flexDirection:'column', borderRight: label==='A' && !isMobile ? `1px solid #e8e5dc` : 'none', borderTop: label==='B' && isMobile ? `1px solid #e8e5dc` : 'none', minHeight:0, overflow:'hidden' }}>
+                {/* Column header */}
+                <div style={{ padding:'8px 14px', background:'#f9f7f2', borderBottom:`1px solid #f0ede4`, display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+                  <div style={{ width:18, height:18, borderRadius:'50%', background: label==='A' ? C.blue : C.orange, display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:700, color:'white', flexShrink:0 }}>{label}</div>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontSize:13, fontWeight:600, color:C.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{info?.name || model}</div>
+                    <div style={{ fontSize:10, color:'#aaa' }}>{info?.provider || ''}{info?.inCost === 0 ? ' · Gratuit' : info?.inCost ? ` · $${info.inCost}/M` : ''}{info?.ctx ? ` · ${info.ctx}` : ''}</div>
+                  </div>
+                  {loading && <span className="streaming-dot" style={{ width:7, height:7, marginLeft:'auto', flexShrink:0 }} />}
+                </div>
+                {/* Response content */}
+                <div className="scroll-y" style={{ flex:1, padding:'14px 16px', minHeight:0 }}>
+                  {res
+                    ? <MsgContent content={res} />
+                    : <div style={{ color:'#bbb', fontSize:13, fontStyle:'italic' }}>{loading ? 'En cours…' : 'La réponse apparaîtra ici'}</div>
+                  }
+                </div>
               </div>
-              {res ? <MsgContent content={res} /> : (
-                <div style={{ color:'#bbb', fontSize:13, fontStyle:'italic' }}>{loading ? 'En cours…' : 'La réponse apparaîtra ici'}</div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </>
