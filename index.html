@@ -17,7 +17,7 @@
 <style>
 *, *::before, *::after { box-sizing: border-box; }
 html, body, #root { margin: 0; padding: 0; height: 100%; overflow: hidden; }
-body { font-family: 'Inter', system-ui, sans-serif; background: #fbfaf6; color: #1a1a1a; -webkit-font-smoothing: antialiased; }
+body { font-family: 'Inter', system-ui, sans-serif; background: #fbfaf6; color: #1a1a1a; -webkit-font-smoothing: antialiased; font-size: 17px; }
 * { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,.12) transparent; }
 *::-webkit-scrollbar { width: 6px; height: 6px; }
 *::-webkit-scrollbar-thumb { background: rgba(0,0,0,.12); border-radius: 3px; }
@@ -47,7 +47,7 @@ html, body, #root { height: 100dvh; }
   /* Apple Human Interface Guidelines: minimum tap target 44×44px */
   button { min-height: 44px; min-width: 44px; }
   /* Larger readable font on mobile */
-  body { font-size: 15px; }
+  body { font-size: 18px; }
 }
 
 /* Scroll iOS fix */
@@ -282,7 +282,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.11';
+const APP_VERSION = '1.12';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -462,7 +462,7 @@ function ModelSelectInline({ value, onChange, allModels, status }) {
     <div style={{ flex:1, minWidth:0 }}>
       {/* Bouton trigger */}
       <button onClick={() => { setOpen(v => !v); setSearch(''); }}
-        style={{ width:'100%', padding:'6px 10px', border:`1.5px solid ${open ? C.blue : C.faint}`, borderRadius:8, background:'white', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'space-between', gap:6, fontSize:12, textAlign:'left', transition:'border-color .15s' }}>
+        style={{ width:'100%', padding:'7px 11px', border:`1.5px solid ${open ? C.blue : C.faint}`, borderRadius:8, background:'white', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'space-between', gap:6, fontSize:13, textAlign:'left', transition:'border-color .15s' }}>
         <div style={{ minWidth:0, flex:1 }}>
           <span style={{ fontWeight:600, color:C.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', display:'block' }}>
             {selected?.name || value}
@@ -484,7 +484,7 @@ function ModelSelectInline({ value, onChange, allModels, status }) {
             <span style={{ color:'#aaa', fontSize:12 }}>🔍</span>
             <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
               placeholder={`Chercher parmi ${allModels.length} modèles…`}
-              style={{ flex:1, border:'none', outline:'none', fontSize:12, background:'transparent', color:C.ink }} />
+              style={{ flex:1, border:'none', outline:'none', fontSize:13, background:'transparent', color:C.ink }} />
             {search && <button onClick={() => setSearch('')} style={{ background:'none', border:'none', cursor:'pointer', color:'#aaa', fontSize:13, padding:0, lineHeight:1 }}>×</button>}
           </div>
           {/* Liste scrollable — hauteur fixe */}
@@ -501,10 +501,10 @@ function ModelSelectInline({ value, onChange, allModels, status }) {
                   onMouseEnter={e => { if (!isCur) e.currentTarget.style.background='#f9f7f2'; }}
                   onMouseLeave={e => { if (!isCur) e.currentTarget.style.background = isCur ? '#fffaee' : 'transparent'; }}>
                   <div style={{ minWidth:0, flex:1 }}>
-                    <div style={{ fontSize:12, fontWeight: isCur ? 700 : 400, color:C.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                    <div style={{ fontSize:13, fontWeight: isCur ? 700 : 400, color:C.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                       {isCur ? '✓ ' : ''}{m.name}
                     </div>
-                    <div style={{ fontSize:10, color:'#aaa' }}>{m.provider} · {m.ctx || '?'}</div>
+                    <div style={{ fontSize:11, color:'#aaa' }}>{m.provider} · {m.ctx || '?'}</div>
                   </div>
                   <span style={{ fontSize:11, fontWeight:600, color: m.inCost === 0 ? C.green : '#888', flexShrink:0 }}>
                     {m.inCost === 0 ? 'Gratuit' : m.inCost ? `$${m.inCost}/M` : '?'}
@@ -1391,7 +1391,7 @@ function ProfileSelector() {
     <div style={{ minHeight:'100dvh', background:C.paper, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', fontFamily:'Inter,sans-serif', padding: isMobile ? '24px 16px' : 40, paddingTop: isMobile ? 'max(24px, calc(env(safe-area-inset-top, 0px) + 16px))' : '40px' }}>
       <div style={{ marginBottom: isMobile ? 28 : 48, textAlign:'center' }}>
         <div style={{ fontFamily:"'Kalam',cursive", fontSize: isMobile ? 38 : 52, fontWeight:700, color:C.ink, letterSpacing:-1 }}>Ricard AI</div>
-        <div style={{ marginTop:4, fontSize: isMobile ? 14 : 16, color:C.muted }}>Qui utilise l'IA ce soir ?</div>
+        <div style={{ marginTop:4, fontSize: isMobile ? 16 : 18, color:C.muted }}>Qui utilise l'IA ce soir ?</div>
         <div style={{ marginTop:4, fontSize:11, color:'#bbb' }}>v{APP_VERSION}</div>
       </div>
 
@@ -1419,8 +1419,8 @@ function ProfileSelector() {
               <div style={{ width:72, height:72, borderRadius:'50%', background:p.color, border:`2px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:30, fontFamily:"'Kalam',cursive", fontWeight:700 }}>
                 {p.label}
               </div>
-              <div style={{ fontSize:18, fontWeight:700 }}>{p.name}</div>
-              {p.age && <div style={{ fontSize:11, color:C.muted, background:C.shade, padding:'2px 8px', borderRadius:999, border:`1px solid ${C.faint}` }}>{p.age} ans</div>}
+              <div style={{ fontSize:20, fontWeight:700 }}>{p.name}</div>
+              {p.age && <div style={{ fontSize:13, color:C.muted, background:C.shade, padding:'3px 9px', borderRadius:999, border:`1px solid ${C.faint}` }}>{p.age} ans</div>}
               <div style={{ width:'100%' }}>
                 <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:C.muted, marginBottom:3 }}>
                   <span>${spent.toFixed(2)}</span><span>/${budget}</span>
@@ -1478,7 +1478,7 @@ function Sidebar({ collapsed, onToggle }) {
           style={{ background: profile?.color || C.orange, border:`2px solid ${C.ink}`, borderRadius:'50%', width:32, height:32, flexShrink:0, cursor:'pointer', fontSize:14, fontFamily:"'Kalam',cursive", fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center' }}
           title="Changer de profil">{profile?.label}</button>
         {!collapsed && <>
-          <span style={{ fontFamily:"'Kalam',cursive", fontSize:16, fontWeight:700, flex:1 }}>Ricard AI</span>
+          <span style={{ fontFamily:"'Kalam',cursive", fontSize:18, fontWeight:700, flex:1 }}>Ricard AI</span>
           <button onClick={onToggle} style={IB}>‹</button>
         </>}
         {collapsed && <button onClick={onToggle} style={{ ...IB, marginLeft:-4 }}>›</button>}
@@ -1492,7 +1492,7 @@ function Sidebar({ collapsed, onToggle }) {
             <button key={t.id} onClick={() => dispatch({ type:'SET_TAB', payload:t.id })}
               style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', border: active ? `1.5px solid ${C.ink}` : '1.5px solid transparent', borderRadius:8, background: active ? 'white' : 'transparent', cursor:'pointer', textAlign:'left', width:'100%', boxShadow: active ? '2px 2px 0 rgba(0,0,0,.08)' : 'none' }}>
               <span style={{ fontSize:16, lineHeight:1 }}>{t.icon}</span>
-              {!collapsed && <span style={{ fontSize:14, fontWeight: active ? 600 : 400, color: t.color || C.ink }}>{t.label}</span>}
+              {!collapsed && <span style={{ fontSize:15, fontWeight: active ? 600 : 400, color: t.color || C.ink }}>{t.label}</span>}
             </button>
           );
         })}
@@ -1521,8 +1521,8 @@ function Sidebar({ collapsed, onToggle }) {
                 onContextMenu={e => { e.preventDefault(); dispatch({ type:'TOGGLE_PIN', payload:{ tabId:state.tab, convId:c.id } }); }}
                 style={{ display:'block', width:'100%', padding:'6px 8px', borderRadius:6, background: c.id===activeId ? 'white' : 'transparent', border: c.id===activeId ? `1px solid #e8e5dc` : '1px solid transparent', cursor:'pointer', textAlign:'left', marginBottom:2 }}
                 title="Clic droit pour épingler/désépingler">
-                <div style={{ fontSize:13, fontWeight: c.id===activeId ? 600 : 400, color:C.ink, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{c.pinned ? '📌 ' : ''}{c.title}</div>
-                <div style={{ fontSize:11, color:'#aaa', marginTop:1 }}>{timeAgo(c.createdAt)} · ${c.totalCost.toFixed(4)}</div>
+                <div style={{ fontSize:14, fontWeight: c.id===activeId ? 600 : 400, color:C.ink, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{c.pinned ? '📌 ' : ''}{c.title}</div>
+                <div style={{ fontSize:12, color:'#aaa', marginTop:1 }}>{timeAgo(c.createdAt)} · ${c.totalCost.toFixed(4)}</div>
               </button>
             ));
           })()}
@@ -1533,10 +1533,10 @@ function Sidebar({ collapsed, onToggle }) {
       <div style={{ padding:'10px 8px', borderTop:`1px dashed ${C.faint}`, display:'flex', alignItems:'center', gap:8 }}>
         <button onClick={() => dispatch({ type:'TOGGLE_SETTINGS' })} style={{ ...IB, fontSize:16 }} title="Réglages">⚙️</button>
         {!collapsed && <>
-          <button onClick={() => dispatch({ type:'TOGGLE_DASHBOARD' })} style={{ background:'none', border:'none', cursor:'pointer', fontSize:12, color:C.muted, flex:1, textAlign:'left', padding:0 }}>
+          <button onClick={() => dispatch({ type:'TOGGLE_DASHBOARD' })} style={{ background:'none', border:'none', cursor:'pointer', fontSize:13, color:C.muted, flex:1, textAlign:'left', padding:0 }}>
             ${state.monthCost.toFixed(2)} ce mois
           </button>
-          <span style={{ fontSize:11, background: overBudget ? C.red : C.green, color:'white', padding:'2px 6px', borderRadius:999 }}>
+          <span style={{ fontSize:12, background: overBudget ? C.red : C.green, color:'white', padding:'2px 6px', borderRadius:999 }}>
             ${remaining.toFixed(0)} restants
           </span>
         </>}
@@ -1592,13 +1592,13 @@ function ChatHeader({ tabId, title, icon, accentColor }) {
             style={{ background:'none', border:'none', cursor:'pointer', fontSize:22, padding:'0 4px', flexShrink:0, color:C.muted, minHeight:44, minWidth:44, display:'flex', alignItems:'center', justifyContent:'center' }}>☰</button>
         )}
         {icon && <span style={{ fontSize:18, flexShrink:0 }}>{icon}</span>}
-        <span style={{ fontSize: isMobile ? 14 : 16, fontWeight:600, color: accentColor || C.ink, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth: isMobile ? 130 : 280 }}>
+        <span style={{ fontSize: isMobile ? 16 : 18, fontWeight:600, color: accentColor || C.ink, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth: isMobile ? 150 : 300 }}>
           {conv?.title !== 'Nouvelle conversation' ? conv?.title : title}
         </span>
       </div>
       <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
         {(totalTk > 0 || state.streaming) && !isMobile && (
-          <div style={{ display:'flex', alignItems:'center', gap:6, background:'#f7f4ec', border:`1px solid #e8e5dc`, borderRadius:20, padding:'3px 10px', fontSize:12 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:6, background:'#f7f4ec', border:`1px solid #e8e5dc`, borderRadius:20, padding:'4px 12px', fontSize:13 }}>
             {state.streaming && <span className="streaming-dot" />}
             <span style={{ color:C.muted }}>{(totalTk/1000).toFixed(1)}k tk</span>
             <span style={{ color:'#bbb' }}>·</span>
@@ -1608,7 +1608,7 @@ function ChatHeader({ tabId, title, icon, accentColor }) {
         {state.streaming && isMobile && <span className="streaming-dot" />}
         {msgs.length > 12 && !isMobile && !state.streaming && (
           <button onClick={handleSummarize} title="Condenser la conversation"
-            style={{ background:'#f7f4ec', border:`1px solid #e8e5dc`, borderRadius:20, padding:'3px 10px', fontSize:11, cursor:'pointer', color:'#555' }}>
+            style={{ background:'#f7f4ec', border:`1px solid #e8e5dc`, borderRadius:20, padding:'4px 12px', fontSize:13, cursor:'pointer', color:'#555' }}>
             🗜 Condenser
           </button>
         )}
@@ -1618,7 +1618,7 @@ function ChatHeader({ tabId, title, icon, accentColor }) {
         </button>
         {model && (
           <button onClick={() => dispatch({ type:'TOGGLE_MODEL_PICKER' })}
-            style={{ background:'#f7f4ec', border:`1px solid #e8e5dc`, borderRadius:20, padding:'3px 10px', fontSize:11, cursor:'pointer', color:'#555', display:'flex', alignItems:'center', gap:4, maxWidth: isMobile ? 110 : 'none', overflow:'hidden' }}>
+            style={{ background:'#f7f4ec', border:`1px solid #e8e5dc`, borderRadius:20, padding:'4px 12px', fontSize:13, cursor:'pointer', color:'#555', display:'flex', alignItems:'center', gap:4, maxWidth: isMobile ? 130 : 'none', overflow:'hidden' }}>
             <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{isMobile ? model.name.split(' ').slice(-1)[0] : model.name}</span>
             <span style={{ color:'#aaa', fontSize:10, flexShrink:0 }}>▾</span>
           </button>
@@ -1699,7 +1699,7 @@ function ChatThread({ tabId }) {
               <div style={{ width:28, height:28, borderRadius:'50%', background:C.blue, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, color:'white', fontFamily:"'Kalam',cursive", fontWeight:700, marginTop:2 }}>R</div>
             )}
             <div style={{ maxWidth: isMobile ? '88%' : '72%' }}>
-              <div style={{ background: msg.role==='user' ? C.yellow : 'white', border:`1.5px solid ${C.ink}`, borderRadius: msg.role==='user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px', padding: isMobile ? '12px 16px' : '10px 14px', fontSize: isMobile ? 15 : 14, lineHeight:1.6, boxShadow:'2px 2px 0 rgba(0,0,0,.06)' }}>
+              <div style={{ background: msg.role==='user' ? C.yellow : 'white', border:`1.5px solid ${C.ink}`, borderRadius: msg.role==='user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px', padding: isMobile ? '13px 17px' : '12px 16px', fontSize: isMobile ? 17 : 16, lineHeight:1.65, boxShadow:'2px 2px 0 rgba(0,0,0,.06)' }}>
                 {msg.role === 'user' ? (
                   <div>
                     {msg.attachments?.length > 0 && (
@@ -1719,7 +1719,7 @@ function ChatThread({ tabId }) {
                   </div>
                 ) : <MsgContent content={msg.content} onOpenArtifact={openArtifact} />}
               </div>
-              <div style={{ display:'flex', gap:6, marginTop:4, fontSize:11, color:'#aaa', paddingLeft:4, alignItems:'center', minHeight:18 }}>
+              <div style={{ display:'flex', gap:6, marginTop:5, fontSize:12, color:'#aaa', paddingLeft:4, alignItems:'center', minHeight:20 }}>
                 {msg.role === 'assistant' && msg.done && (msg.inTk || msg.outTk) && (
                   <><span>{((msg.inTk||0)+(msg.outTk||0)).toLocaleString()} tk</span><span>·</span><span>${estimateCost(conv?.model,msg.inTk||0,msg.outTk||0).toFixed(5)}</span></>
                 )}
@@ -1875,7 +1875,7 @@ function InputArea({ tabId, placeholder }) {
         )}
 
         <textarea ref={taRef} value={text} onChange={onInput} onKeyDown={onKey} placeholder={listening ? '🎤 En écoute… parlez maintenant' : (placeholder || 'Écris ton message… (Entrée pour envoyer)')} disabled={state.streaming} rows={1}
-          style={{ width:'100%', padding:'12px 14px', border:'none', outline:'none', resize:'none', fontFamily:'Inter,sans-serif', fontSize:14, lineHeight:1.5, background:'transparent', color:C.ink, minHeight:44, boxSizing:'border-box' }} />
+          style={{ width:'100%', padding:'12px 14px', border:'none', outline:'none', resize:'none', fontFamily:'Inter,sans-serif', fontSize:16, lineHeight:1.6, background:'transparent', color:C.ink, minHeight:44, boxSizing:'border-box' }} />
         {interimText && (
           <div style={{ padding:'0 14px 8px', fontSize:13, color:'#aaa', fontStyle:'italic', lineHeight:1.4 }}>
             <span style={{ opacity:.7 }}>🎤 </span>{interimText}…
@@ -1899,8 +1899,8 @@ function InputArea({ tabId, placeholder }) {
               </button>
             )}
             <button onClick={() => dispatch({ type:'TOGGLE_MODEL_PICKER' })}
-              style={{ background:'#f1eee5', border:`1px solid ${C.faint}`, borderRadius:20, padding:'3px 10px', fontSize:12, cursor:'pointer', display:'flex', alignItems:'center', gap:4, color:'#555' }}>
-              {model?.name} <span style={{ color:'#aaa', fontSize:10 }}>▾</span>
+              style={{ background:'#f1eee5', border:`1px solid ${C.faint}`, borderRadius:20, padding:'4px 12px', fontSize:13, cursor:'pointer', display:'flex', alignItems:'center', gap:4, color:'#555' }}>
+              {model?.name} <span style={{ color:'#aaa', fontSize:11 }}>▾</span>
             </button>
             {model?.inCost && !isMobile ? <span style={{ fontSize:11, color:'#aaa' }}>${model.inCost}/M</span> : null}
           </div>
@@ -1933,11 +1933,11 @@ function EmptyState({ tabId, title, suggestions }) {
   const shown = isMobile ? suggestions.slice(0, 4) : suggestions;
   return (
     <div className="scroll-y" style={{ flex:1, minHeight:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent: isMobile ? 'flex-start' : 'center', padding: isMobile ? '28px 14px 16px' : '32px 40px', gap: isMobile ? 16 : 24 }}>
-      <div style={{ fontSize: isMobile ? 17 : 22, fontWeight:700, color:C.ink, textAlign:'center', fontFamily:"'Kalam',cursive", maxWidth:500, lineHeight:1.3 }}>{title}</div>
-      <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(3,1fr)', gap: isMobile ? 8 : 10, width:'100%', maxWidth: isMobile ? '100%' : 640 }}>
+      <div style={{ fontSize: isMobile ? 20 : 24, fontWeight:700, color:C.ink, textAlign:'center', fontFamily:"'Kalam',cursive", maxWidth:500, lineHeight:1.3 }}>{title}</div>
+      <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(3,1fr)', gap: isMobile ? 10 : 12, width:'100%', maxWidth: isMobile ? '100%' : 640 }}>
         {shown.map(s => (
           <button key={s} onClick={() => sendMessage({ tabId, content: s })}
-            style={{ background:'white', border:`1.5px solid #e8e5dc`, borderRadius:10, padding: isMobile ? '10px 10px' : '10px 12px', cursor:'pointer', fontSize: isMobile ? 12 : 13, textAlign:'left', color:'#555', boxShadow:'2px 2px 0 rgba(0,0,0,.04)', lineHeight:1.4 }}
+            style={{ background:'white', border:`1.5px solid #e8e5dc`, borderRadius:10, padding: isMobile ? '12px 12px' : '12px 14px', cursor:'pointer', fontSize: isMobile ? 14 : 15, textAlign:'left', color:'#555', boxShadow:'2px 2px 0 rgba(0,0,0,.04)', lineHeight:1.4 }}
             onMouseEnter={e => { e.currentTarget.style.background=C.paper; }}
             onMouseLeave={e => { e.currentTarget.style.background='white'; }}>
             {s}
@@ -2833,10 +2833,10 @@ function Settings() {
         </div>
         <div style={{ overflow:'auto', padding:'16px 18px', display:'flex', flexDirection:'column', gap:20 }}>
           <section>
-            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:8 }}>Clé API OpenRouter</div>
+            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:8 }}>Clé API OpenRouter</div>
             <div style={{ display:'flex', gap:8 }}>
               <input type={showKey ? 'text' : 'password'} value={s.apiKey || ''} onChange={e => { const k = e.target.value; setS(p => ({ ...p, apiKey:k })); if (k) { lsSet('apikey_backup', k); } }} placeholder="sk-or-v1-…"
-                style={{ flex:1, padding:'8px 12px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:14, fontFamily:'monospace', outline:'none', background:C.paper }} />
+                style={{ flex:1, padding:'9px 13px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:15, fontFamily:'monospace', outline:'none', background:C.paper }} />
               <button onClick={() => setShowKey(v => !v)} style={{ background:'#f1eee5', border:`1.5px solid ${C.faint}`, borderRadius:8, padding:'0 12px', cursor:'pointer', fontSize:14 }}>{showKey ? '🙈' : '👁️'}</button>
             </div>
             <p style={{ fontSize:12, color:'#aaa', margin:'6px 0 0' }}>
@@ -2844,12 +2844,12 @@ function Settings() {
             </p>
           </section>
           <section>
-            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:8 }}>Budget mensuel ($)</div>
+            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:8 }}>Budget mensuel ($)</div>
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
               {PROFILES.map(p => (
                 <div key={p.id} style={{ display:'flex', alignItems:'center', gap:12 }}>
                   <div style={{ width:28, height:28, borderRadius:'50%', background:p.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontFamily:"'Kalam',cursive", fontWeight:700, flexShrink:0 }}>{p.label}</div>
-                  <span style={{ flex:1, fontSize:14, fontWeight:500 }}>{p.name}</span>
+                  <span style={{ flex:1, fontSize:15, fontWeight:500 }}>{p.name}</span>
                   <div style={{ display:'flex', alignItems:'center', gap:4 }}>
                     <span style={{ color:'#aaa', fontSize:13 }}>$</span>
                     <input type="number" min={1} max={500} value={s.budgets?.[p.id] ?? 50} onChange={e => setS(prev => ({ ...prev, budgets:{ ...prev.budgets, [p.id]: Number(e.target.value) } }))}
@@ -2861,7 +2861,7 @@ function Settings() {
             </div>
           </section>
           <section>
-            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:8 }}>Code PIN — Profils adultes</div>
+            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:8 }}>Code PIN — Profils adultes</div>
             <div style={{ display:'flex', gap:8, alignItems:'center' }}>
               <input type="password" inputMode="numeric" maxLength={4} value={s.adminPin || ''}
                 onChange={e => setS(p => ({ ...p, adminPin: e.target.value.replace(/\D/g,'').slice(0,4) }))}
@@ -2909,7 +2909,7 @@ function Settings() {
 
           {/* ── Section Cloud ───────────────────────────── */}
           <section>
-            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>☁️ Sync & Sauvegarde</div>
+            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>☁️ Sync & Sauvegarde</div>
 
             {/* Status Firebase */}
             <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, padding:'8px 12px', borderRadius:8, background: fbStatus==='ok' ? '#edfaed' : fbStatus==='error' ? '#fdf0f0' : '#f7f4ec', border:`1px solid ${fbStatus==='ok' ? '#b8e8b8' : fbStatus==='error' ? '#f5c0c0' : '#e0ddd4'}` }}>
@@ -2973,7 +2973,7 @@ function Settings() {
 
           {/* ── Mémoire & instructions personnelles ─────── */}
           <section>
-            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>🧠 Mémoire & instructions</div>
+            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>🧠 Mémoire & instructions</div>
             <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
               {PROFILES.map(p => (
                 <div key={p.id}>
@@ -2991,14 +2991,14 @@ function Settings() {
 
           {/* ── Mode socratique ─────────────────────────── */}
           <section>
-            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>🎓 Mode socratique</div>
+            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>🎓 Mode socratique</div>
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
               {['zya','zelie'].map(pid => {
                 const p = getProfile(pid);
                 return (
                   <div key={pid} style={{ display:'flex', alignItems:'center', gap:12 }}>
                     <div style={{ width:22, height:22, borderRadius:'50%', background:p?.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontFamily:"'Kalam',cursive", fontWeight:700, flexShrink:0 }}>{p?.label}</div>
-                    <span style={{ flex:1, fontSize:14 }}>{p?.name}</span>
+                    <span style={{ flex:1, fontSize:15 }}>{p?.name}</span>
                     <button onClick={() => setS(prev => ({ ...prev, socraticMode: { ...prev.socraticMode, [pid]: !prev.socraticMode?.[pid] } }))}
                       style={{ padding:'4px 12px', background: s.socraticMode?.[pid] ? C.purple : '#f1eee5', color: s.socraticMode?.[pid] ? 'white' : C.muted, border:`1.5px solid ${s.socraticMode?.[pid] ? C.purple : C.faint}`, borderRadius:20, fontSize:12, cursor:'pointer', fontWeight: s.socraticMode?.[pid] ? 600 : 400 }}>
                       {s.socraticMode?.[pid] ? 'Activé' : 'Désactivé'}
@@ -3012,12 +3012,12 @@ function Settings() {
 
           {/* ── Limites quotidiennes ─────────────────────── */}
           <section>
-            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>⏱ Limites quotidiennes</div>
+            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>⏱ Limites quotidiennes</div>
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
               {PROFILES.map(p => (
                 <div key={p.id} style={{ display:'flex', alignItems:'center', gap:12 }}>
                   <div style={{ width:22, height:22, borderRadius:'50%', background:p.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontFamily:"'Kalam',cursive", fontWeight:700, flexShrink:0 }}>{p.label}</div>
-                  <span style={{ flex:1, fontSize:14, fontWeight:500 }}>{p.name}</span>
+                  <span style={{ flex:1, fontSize:15, fontWeight:500 }}>{p.name}</span>
                   <input type="number" min={1} max={500} placeholder="∞"
                     value={s.dailyLimits?.[p.id] ?? ''}
                     onChange={e => setS(prev => ({ ...prev, dailyLimits: { ...prev.dailyLimits, [p.id]: e.target.value === '' ? null : Number(e.target.value) } }))}
@@ -3031,9 +3031,9 @@ function Settings() {
 
           {/* ── Apparence (dark mode) ────────────────────── */}
           <section>
-            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>🌙 Apparence</div>
+            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>🌙 Apparence</div>
             <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-              <span style={{ flex:1, fontSize:14 }}>Mode sombre</span>
+              <span style={{ flex:1, fontSize:15 }}>Mode sombre</span>
               <button onClick={() => {
                 const isDark = document.body.classList.toggle('dark-mode');
                 localStorage.setItem('ricard_dark', isDark ? '1' : '');
@@ -3120,7 +3120,7 @@ function Dashboard() {
             ))}
           </div>
           <div>
-            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>Par profil · ce mois</div>
+            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>Par profil · ce mois</div>
             {costs.map(p => {
               const pct = Math.min(100, (p.spent/p.budget)*100);
               return (
@@ -3137,7 +3137,7 @@ function Dashboard() {
           </div>
           {/* Weekly digest */}
           <div>
-            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>📅 Cette semaine</div>
+            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>📅 Cette semaine</div>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:10, marginBottom:10 }}>
               {weekByProfile.map(p => (
                 <div key={p.id} style={{ border:`1.5px solid #e8e5dc`, borderRadius:10, padding:'10px 12px', display:'flex', alignItems:'center', gap:10 }}>
@@ -3158,7 +3158,7 @@ function Dashboard() {
 
           {log.length > 0 && (
             <div>
-              <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>Journal des échanges</div>
+              <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>Journal des échanges</div>
               <div style={{ border:`1px solid #e8e5dc`, borderRadius:8, overflow:'hidden', fontFamily:'monospace', fontSize:12 }}>
                 {log.map((e, i) => (
                   <div key={i} style={{ display:'grid', gridTemplateColumns:'80px 60px 130px 1fr 70px', padding:'6px 12px', borderBottom: i<log.length-1 ? `1px solid #f0ede4` : 'none', background: i%2===0 ? 'white' : '#fafaf6', alignItems:'center', gap:4 }}>
