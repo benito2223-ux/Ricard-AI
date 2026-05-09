@@ -326,7 +326,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.14';
+const APP_VERSION = '1.15';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -661,6 +661,10 @@ function loadSettings() {
     profileContext:  s.profileContext  ?? { papa:'', maman:'', zya:'', zelie:'' },
     socraticMode:    s.socraticMode    ?? { zya:false, zelie:false },
     dailyLimits:     s.dailyLimits     ?? { papa:null, maman:null, zya:30, zelie:20 },
+    accessHours:     s.accessHours     ?? {
+      zya:   { enabled:false, start:'08:00', end:'21:00' },
+      zelie: { enabled:false, start:'08:00', end:'21:00' },
+    },
   };
 }
 function dateKey() { const d = new Date(); return `${d.getFullYear()}_${d.getMonth()+1}_${d.getDate()}`; }
@@ -940,6 +944,29 @@ function useVoiceInput(onResult) {
   return { listening, supported, toggle, interimText };
 }
 
+// ─── Helpers contrôle parental ───────────────────────────────
+function isInAccessHours(hours) {
+  if (!hours?.enabled) return true;
+  const now = new Date();
+  const [sh, sm] = (hours.start || '00:00').split(':').map(Number);
+  const [eh, em] = (hours.end   || '23:59').split(':').map(Number);
+  const cur = now.getHours() * 60 + now.getMinutes();
+  return cur >= sh * 60 + sm && cur < eh * 60 + em;
+}
+
+function getWelcomeMsg(pid) {
+  const h = new Date().getHours();
+  const salut = h < 6 ? '🌙 Bonne nuit' : h < 12 ? '☀️ Bonjour' : h < 18 ? '👋 Bon après-midi' : '🌇 Bonne soirée';
+  const bank = {
+    papa:  [`${salut} Papa ! L'IA est prête pour toi.`, `${salut} Papa 💪 Qu'est-ce qu'on attaque ?`],
+    maman: [`${salut} Maman ! À toi de jouer ✨`, `${salut} Maman ! Quelle belle idée auras-tu aujourd'hui ?`],
+    zya:   [`${salut} Zya ! Prête à explorer ? 🚀`, `${salut} Zya ! Qu'est-ce qu'on apprend aujourd'hui ? 🌟`],
+    zelie: [`${salut} Zélie ! C'est l'heure de créer 🌸`, `${salut} Zélie ! Qu'est-ce qui te plaît aujourd'hui ? 🎨`],
+  };
+  const list = bank[pid] || [`${salut} !`];
+  return list[Math.floor(Math.random() * list.length)];
+}
+
 // ─── App State ───────────────────────────────────────────────
 const TABS = ['chat','code','design','zya','zelie'];
 function newConv(tabId, settings) {
@@ -971,6 +998,8 @@ function buildState(pid) {
     showModelPicker: false, showSettings: false, showDashboard: false,
     artifact: null, showArtifact: false,
     showSearch: false, showCompare: false,
+    toasts: [],
+    welcome: pid,  // déclenche le message de bienvenue
   };
 }
 
@@ -999,6 +1028,12 @@ function reducer(state, action) {
     case 'CONFIRM_PROFILE': return { ...buildState(action.payload), showPinEntry: false, pendingProfile: null };
     case 'SHOW_FAMILY_GATE': return { ...state, showFamilyGate: true };
     case 'HIDE_FAMILY_GATE': return { ...state, showFamilyGate: false };
+    case 'SHOW_TOAST': {
+      const t = { id: Date.now() + Math.random(), ...action.payload };
+      return { ...state, toasts: [...(state.toasts||[]), t] };
+    }
+    case 'DISMISS_TOAST': return { ...state, toasts: (state.toasts||[]).filter(t => t.id !== action.payload) };
+    case 'DISMISS_WELCOME': return { ...state, welcome: null };
     case 'OPEN_ARTIFACT': return { ...state, artifact: action.payload, showArtifact: true };
     case 'CLOSE_ARTIFACT': return { ...state, showArtifact: false };
     case 'TOGGLE_ARTIFACT': return { ...state, showArtifact: !state.showArtifact };
@@ -1129,6 +1164,8 @@ function AppProvider({ children }) {
       artifact: null, showArtifact: false,
       showSearch: false, showCompare: false,
       showFamilyGate: needsGate,
+      toasts: [],
+      welcome: null,
     };
   });
 
@@ -1253,8 +1290,23 @@ function AppProvider({ children }) {
         dispatch({ type:'UPDATE_ASSISTANT', payload:{ tabId:t, content:text, inTk:inputTokens, outTk:outputTokens, done:true } });
         dispatch({ type:'SET_STREAMING', payload:false });
         const cost = estimateCost(conv.model, inputTokens, outputTokens);
-        dispatch({ type:'SET_MONTH_COST', payload: addMonthCost(state.profile, cost) });
+        const newCost = addMonthCost(state.profile, cost);
+        dispatch({ type:'SET_MONTH_COST', payload: newCost });
         appendCostLog({ ts:Date.now(), profile:state.profile, tab:t, model:conv.model, inputTokens, outputTokens, cost });
+        // ── Alertes budget ──────────────────────────────────
+        const pid = state.profile;
+        const budget = state.settings.budgets?.[pid] || 50;
+        const pct = newCost / budget;
+        const warnKey80  = `budget_warn80_${pid}_${monthKey()}`;
+        const warnKey100 = `budget_warn100_${pid}_${monthKey()}`;
+        const profName = getProfile(pid)?.name || pid;
+        if (pct >= 1.0 && !lsGet(warnKey100, false)) {
+          lsSet(warnKey100, true);
+          dispatch({ type:'SHOW_TOAST', payload:{ message:`🚨 Budget épuisé pour ${profName} ! (${budget}$)`, type:'error', duration:7000 }});
+        } else if (pct >= 0.8 && !lsGet(warnKey80, false)) {
+          lsSet(warnKey80, true);
+          dispatch({ type:'SHOW_TOAST', payload:{ message:`⚠️ Budget à 80% pour ${profName} (${newCost.toFixed(2)}$/${budget}$)`, type:'warning', duration:5000 }});
+        }
       },
       onError: errMsg => {
         dispatch({ type:'UPDATE_ASSISTANT', payload:{ tabId:t, content:`⚠️ ${errMsg}`, inTk:0, outTk:0, done:true } });
@@ -1382,6 +1434,67 @@ function MsgContent({ content, onOpenArtifact }) {
   return <div>{parts.map((p, i) => p.type === 'code'
     ? <CodeBlock key={i} lang={p.lang} content={p.content} onOpenArtifact={onOpenArtifact} />
     : <TextBlock key={i} text={p.content} />)}</div>;
+}
+
+// ─── Toast Container ─────────────────────────────────────────
+function SingleToast({ toast }) {
+  const { dispatch } = useApp();
+  useEffect(() => {
+    const timer = setTimeout(() => dispatch({ type:'DISMISS_TOAST', payload:toast.id }), toast.duration || 4500);
+    return () => clearTimeout(timer);
+  }, [toast.id]);
+
+  const bg = toast.type === 'error' ? C.red : toast.type === 'warning' ? C.orange : C.ink;
+  const border = toast.type === 'error' ? C.red : toast.type === 'warning' ? C.orange : C.cyan;
+
+  return (
+    <div style={{ background:bg, color:'white', border:`3px solid ${border}`, borderRadius:'var(--pc-radius-3)', padding:'12px 16px', display:'flex', alignItems:'center', gap:12, boxShadow:`4px 4px 0 rgba(0,0,0,.4)`, maxWidth:340, cursor:'pointer', fontFamily:'var(--pc-font-body)', fontSize:14, lineHeight:1.4 }}
+      onClick={() => dispatch({ type:'DISMISS_TOAST', payload:toast.id })}>
+      <span style={{ flex:1 }}>{toast.message}</span>
+      <span style={{ fontSize:12, opacity:.7, flexShrink:0 }}>✕</span>
+    </div>
+  );
+}
+
+function ToastContainer() {
+  const { state } = useApp();
+  const toasts = state.toasts || [];
+  if (!toasts.length) return null;
+  return (
+    <div style={{ position:'fixed', bottom: 'calc(16px + env(safe-area-inset-bottom, 0px))', right:16, zIndex:600, display:'flex', flexDirection:'column', gap:10, alignItems:'flex-end' }}>
+      {toasts.map(t => <SingleToast key={t.id} toast={t} />)}
+    </div>
+  );
+}
+
+// ─── Welcome Overlay ──────────────────────────────────────────
+function WelcomeOverlay() {
+  const { state, dispatch } = useApp();
+  const [visible, setVisible] = useState(false);
+  const [msg, setMsg]         = useState('');
+
+  useEffect(() => {
+    if (!state.welcome) return;
+    setMsg(getWelcomeMsg(state.welcome));
+    setVisible(true);
+    const t = setTimeout(() => {
+      setVisible(false);
+      setTimeout(() => dispatch({ type:'DISMISS_WELCOME' }), 400);
+    }, 2500);
+    return () => clearTimeout(t);
+  }, [state.welcome]);
+
+  if (!state.welcome) return null;
+  const profile = getProfile(state.welcome);
+
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:400, display:'flex', alignItems:'center', justifyContent:'center', pointerEvents:'none' }}>
+      <div style={{ background:C.paper, border:`4px solid ${C.ink}`, borderRadius:'var(--pc-radius-1)', padding:'28px 36px', textAlign:'center', boxShadow:`8px 8px 0 ${C.ink}`, maxWidth:320, opacity: visible ? 1 : 0, transform: visible ? 'scale(1) translateY(0)' : 'scale(.9) translateY(10px)', transition:'opacity .3s ease, transform .3s ease' }}>
+        <div style={{ width:64, height:64, borderRadius:'50%', background:profile?.color || C.orange, border:`3px solid ${C.ink}`, margin:'0 auto 12px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:26, fontFamily:"'Permanent Marker',cursive", fontWeight:700 }}>{profile?.label}</div>
+        <div style={{ fontFamily:'var(--pc-font-display)', fontSize:22, color:C.ink, lineHeight:1.3 }}>{msg}</div>
+      </div>
+    </div>
+  );
 }
 
 // ─── Family Gate ─────────────────────────────────────────────
@@ -1542,10 +1655,12 @@ function PinEntry() {
 function ProfileSelector() {
   const { state, dispatch } = useApp();
   const isMobile = useIsMobile();
+  const [blocked, setBlocked] = useState(null); // { pid, start, end }
   const budgets = state.settings.budgets || {};
   const totalBudget = Object.values(budgets).reduce((a,b) => a+b, 0);
   const costs = PROFILES.reduce((a, p) => { a[p.id] = loadMonthCost(p.id); return a; }, {});
   const totalSpent = Object.values(costs).reduce((a,b) => a+b, 0);
+  const msgsToday = pid => lsGet('daily_' + pid + '_' + dateKey(), 0);
 
   return (
     <div style={{ minHeight:'100dvh', background:C.paper, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', fontFamily:'var(--pc-font-body)', padding: isMobile ? '24px 16px' : 40, paddingTop: isMobile ? 'max(24px, calc(env(safe-area-inset-top, 0px) + 16px))' : '40px' }}>
@@ -1562,6 +1677,15 @@ function ProfileSelector() {
           const pct = Math.min(100, (spent / budget) * 100);
           return (
             <button key={p.id} onClick={() => {
+              // Vérification plages horaires (enfants seulement)
+              if (p.isKid) {
+                const hours = state.settings.accessHours?.[p.id];
+                if (!isInAccessHours(hours)) {
+                  setBlocked({ pid:p.id, start:hours.start, end:hours.end, name:p.name });
+                  setTimeout(() => setBlocked(null), 3500);
+                  return;
+                }
+              }
               const codes = state.settings.profileCodes || {};
               const code = codes[p.id] || (p.admin ? state.settings.adminPin : '');
               if (code) {
@@ -1584,6 +1708,18 @@ function ProfileSelector() {
               </div>
               <div style={{ fontFamily:'var(--pc-font-display)', fontSize:22, color:C.ink }}>{p.name}</div>
               {p.age && <div style={{ fontSize:13, color:C.muted, background:C.shade, padding:'3px 9px', borderRadius:999, border:`1px solid ${C.faint}` }}>{p.age} ans</div>}
+              {/* Blocage horaire */}
+              {blocked?.pid === p.id && (
+                <div style={{ position:'absolute', inset:0, background:'rgba(17,17,17,.88)', borderRadius:'var(--pc-radius-1)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:6, padding:12 }}>
+                  <div style={{ fontSize:28 }}>⏰</div>
+                  <div style={{ fontFamily:'var(--pc-font-display)', fontSize:16, color:C.yellow, textAlign:'center' }}>Hors horaire !</div>
+                  <div style={{ fontSize:12, color:'#aaa', textAlign:'center', fontFamily:'var(--pc-font-body)' }}>{blocked.start} – {blocked.end}</div>
+                </div>
+              )}
+              {/* Messages du jour */}
+              {msgsToday(p.id) > 0 && (
+                <div style={{ fontSize:11, color:C.muted, fontFamily:'var(--pc-font-body)' }}>{msgsToday(p.id)} msg aujourd'hui</div>
+              )}
               <div style={{ width:'100%' }}>
                 <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:C.muted, marginBottom:3 }}>
                   <span>${spent.toFixed(2)}</span><span>/${budget}</span>
@@ -1775,6 +1911,19 @@ function ChatHeader({ tabId, title, icon, accentColor }) {
             🗜 Condenser
           </button>
         )}
+        {!isMobile && (() => {
+          const prof = getProfile(state.profile);
+          return (
+            <button onClick={() => dispatch({ type:'SET_PROFILE', payload:null })}
+              title="Changer de profil"
+              style={{ background:'white', border:`2px solid ${C.ink}`, borderRadius:20, padding:'3px 10px', fontSize:11, cursor:'pointer', color:C.ink, display:'flex', alignItems:'center', gap:5, boxShadow:`2px 2px 0 ${C.ink}`, transition:'all 0.1s steps(2)' }}
+              onMouseEnter={e => { e.currentTarget.style.background=C.yellow; e.currentTarget.style.transform='translate(-1px,-1px)'; e.currentTarget.style.boxShadow=`3px 3px 0 ${C.ink}`; }}
+              onMouseLeave={e => { e.currentTarget.style.background='white'; e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow=`2px 2px 0 ${C.ink}`; }}>
+              <span style={{ width:16, height:16, borderRadius:'50%', background:prof?.color, border:`1.5px solid ${C.ink}`, display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:9, fontFamily:"'Permanent Marker',cursive", fontWeight:700, flexShrink:0 }}>{prof?.label}</span>
+              {prof?.name}
+            </button>
+          );
+        })()}
         <button onClick={() => dispatch({ type:'TOGGLE_COMPARE' })} title="Comparer deux modèles"
           style={{ background:'#f7f4ec', border:`1px solid #e8e5dc`, borderRadius:20, padding: isMobile ? '4px 10px' : '3px 10px', fontSize: isMobile ? 16 : 11, cursor:'pointer', color:'#555', display:'flex', alignItems:'center', gap: isMobile ? 0 : 3, minHeight: isMobile ? 36 : 'auto' }}>
           ⚡{!isMobile && ' Comparer'}
@@ -3095,6 +3244,44 @@ function Settings() {
             </div>
           </section>
 
+          {/* ── ⏰ Plages horaires ───────────────────────── */}
+          <section>
+            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:14 }}>⏰ Plages horaires enfants</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+              {['zya','zelie'].map(pid => {
+                const p = getProfile(pid);
+                const h = s.accessHours?.[pid] || { enabled:false, start:'08:00', end:'21:00' };
+                const setH = patch => setS(prev => ({
+                  ...prev,
+                  accessHours: { ...prev.accessHours, [pid]: { ...(prev.accessHours?.[pid] || h), ...patch } }
+                }));
+                return (
+                  <div key={pid} style={{ background: h.enabled ? '#f0fdf4' : '#f7f4ec', border:`1.5px solid ${h.enabled ? '#86efac' : C.faint}`, borderRadius:10, padding:'12px 14px' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom: h.enabled ? 10 : 0 }}>
+                      <div style={{ width:24, height:24, borderRadius:'50%', background:p?.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontFamily:"'Permanent Marker',cursive", fontWeight:700, flexShrink:0 }}>{p?.label}</div>
+                      <span style={{ flex:1, fontSize:14, fontWeight:600 }}>{p?.name}</span>
+                      <button onClick={() => setH({ enabled:!h.enabled })}
+                        style={{ padding:'4px 12px', background: h.enabled ? '#16a34a' : '#f1eee5', color: h.enabled ? 'white' : C.muted, border:`1.5px solid ${h.enabled ? '#16a34a' : C.faint}`, borderRadius:20, fontSize:12, cursor:'pointer', fontWeight: h.enabled ? 600 : 400 }}>
+                        {h.enabled ? 'Activé' : 'Désactivé'}
+                      </button>
+                    </div>
+                    {h.enabled && (
+                      <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:13 }}>
+                        <span style={{ color:'#555' }}>Accès de</span>
+                        <input type="time" value={h.start} onChange={e => setH({ start:e.target.value })}
+                          style={{ padding:'4px 8px', border:`1.5px solid ${C.faint}`, borderRadius:6, fontSize:13, outline:'none', background:'white' }} />
+                        <span style={{ color:'#555' }}>à</span>
+                        <input type="time" value={h.end} onChange={e => setH({ end:e.target.value })}
+                          style={{ padding:'4px 8px', border:`1.5px solid ${C.faint}`, borderRadius:6, fontSize:13, outline:'none', background:'white' }} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <p style={{ fontSize:11, color:'#aaa', margin:'8px 0 0' }}>Hors de ces horaires, les enfants voient un écran de blocage. Les parents ne sont pas limités.</p>
+          </section>
+
           {/* ── Modèles par défaut ──────────────────────── */}
           <section>
             <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:4 }}>🤖 Modèles par défaut</div>
@@ -3618,6 +3805,8 @@ function App() {
     <>
       {state.profile ? <Layout /> : <ProfileSelector />}
       <PinEntry />
+      <WelcomeOverlay />
+      <ToastContainer />
     </>
   );
 }
