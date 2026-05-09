@@ -44,8 +44,10 @@ html, body, #root { height: 100dvh; }
 /* Prevent iOS input zoom (font-size must be ≥ 16px) */
 @media (max-width: 700px) {
   textarea, input, select { font-size: 16px !important; }
-  /* Ensure tap targets are minimum 44px */
-  button { min-height: 36px; }
+  /* Apple Human Interface Guidelines: minimum tap target 44×44px */
+  button { min-height: 44px; min-width: 44px; }
+  /* Larger readable font on mobile */
+  body { font-size: 15px; }
 }
 
 /* Scroll iOS fix */
@@ -65,11 +67,12 @@ html, body, #root { height: 100dvh; }
 .mobile-nav-btn {
   flex: 1; display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  gap: 2px; padding: 8px 0; border: none; background: transparent;
+  gap: 3px; padding: 10px 0; border: none; background: transparent;
   cursor: pointer; font-family: inherit; -webkit-tap-highlight-color: transparent;
+  min-height: 52px;
 }
-.mobile-nav-btn span:first-child { font-size: 20px; line-height: 1; }
-.mobile-nav-btn span:last-child  { font-size: 10px; }
+.mobile-nav-btn span:first-child { font-size: 22px; line-height: 1; }
+.mobile-nav-btn span:last-child  { font-size: 11px; font-weight: 500; }
 
 /* ── DARK MODE ── */
 body.dark-mode { filter: invert(0.92) hue-rotate(180deg); }
@@ -277,6 +280,9 @@ function uuid() {
     return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
   });
 }
+
+// ─── App version ────────────────────────────────────────────
+const APP_VERSION = '1.10';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -1382,10 +1388,11 @@ function ProfileSelector() {
   const totalSpent = Object.values(costs).reduce((a,b) => a+b, 0);
 
   return (
-    <div style={{ minHeight:'100dvh', background:C.paper, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', fontFamily:'Inter,sans-serif', padding: isMobile ? '24px 16px' : 40 }}>
+    <div style={{ minHeight:'100dvh', background:C.paper, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', fontFamily:'Inter,sans-serif', padding: isMobile ? '24px 16px' : 40, paddingTop: isMobile ? 'max(24px, calc(env(safe-area-inset-top, 0px) + 16px))' : '40px' }}>
       <div style={{ marginBottom: isMobile ? 28 : 48, textAlign:'center' }}>
         <div style={{ fontFamily:"'Kalam',cursive", fontSize: isMobile ? 38 : 52, fontWeight:700, color:C.ink, letterSpacing:-1 }}>Ricard AI</div>
         <div style={{ marginTop:4, fontSize: isMobile ? 14 : 16, color:C.muted }}>Qui utilise l'IA ce soir ?</div>
+        <div style={{ marginTop:4, fontSize:11, color:'#bbb' }}>v{APP_VERSION}</div>
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: isMobile ? 14 : 24, marginBottom: isMobile ? 28 : 48, width:'100%', maxWidth:700 }}>
@@ -1578,11 +1585,11 @@ function ChatHeader({ tabId, title, icon, accentColor }) {
   };
 
   return (
-    <div style={{ padding: isMobile ? '8px 12px' : '10px 20px', borderBottom:`1.5px solid #e8e5dc`, background:'white', display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, minHeight:52, flexShrink:0 }}>
+    <div style={{ padding: isMobile ? '8px 12px' : '10px 20px', paddingTop: isMobile ? 'max(8px, env(safe-area-inset-top, 8px))' : '10px', borderBottom:`1.5px solid #e8e5dc`, background:'white', display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, minHeight: isMobile ? 'calc(52px + env(safe-area-inset-top, 0px))' : '52px', flexShrink:0 }}>
       <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0, flex:1 }}>
         {isMobile && (
           <button onClick={() => dispatch({ type:'SET_PROFILE', payload:null })}
-            style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, padding:'0 2px', flexShrink:0, color:C.muted }}>☰</button>
+            style={{ background:'none', border:'none', cursor:'pointer', fontSize:22, padding:'0 4px', flexShrink:0, color:C.muted, minHeight:44, minWidth:44, display:'flex', alignItems:'center', justifyContent:'center' }}>☰</button>
         )}
         {icon && <span style={{ fontSize:18, flexShrink:0 }}>{icon}</span>}
         <span style={{ fontSize: isMobile ? 14 : 16, fontWeight:600, color: accentColor || C.ink, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth: isMobile ? 130 : 280 }}>
@@ -1622,7 +1629,7 @@ function ChatHeader({ tabId, title, icon, accentColor }) {
           style={{ background:'none', border:`1px solid ${C.faint}`, borderRadius:6, width:28, height:28, cursor:'pointer', color:C.muted, fontSize:16, display:'flex', alignItems:'center', justifyContent:'center', padding:0, flexShrink:0 }} title="Nouvelle conversation">+</button>
         {isMobile && (
           <button onClick={() => dispatch({ type:'TOGGLE_SETTINGS' })}
-            style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, padding:'0 2px', color:C.muted }}>⚙️</button>
+            style={{ background:'none', border:'none', cursor:'pointer', fontSize:22, padding:'0 4px', color:C.muted, minHeight:44, minWidth:44, display:'flex', alignItems:'center', justifyContent:'center' }}>⚙️</button>
         )}
       </div>
     </div>
@@ -1694,7 +1701,7 @@ function ChatThread({ tabId }) {
               <div style={{ width:28, height:28, borderRadius:'50%', background:C.blue, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, color:'white', fontFamily:"'Kalam',cursive", fontWeight:700, marginTop:2 }}>R</div>
             )}
             <div style={{ maxWidth: isMobile ? '88%' : '72%' }}>
-              <div style={{ background: msg.role==='user' ? C.yellow : 'white', border:`1.5px solid ${C.ink}`, borderRadius: msg.role==='user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px', padding:'10px 14px', fontSize:14, lineHeight:1.5, boxShadow:'2px 2px 0 rgba(0,0,0,.06)' }}>
+              <div style={{ background: msg.role==='user' ? C.yellow : 'white', border:`1.5px solid ${C.ink}`, borderRadius: msg.role==='user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px', padding: isMobile ? '12px 16px' : '10px 14px', fontSize: isMobile ? 15 : 14, lineHeight:1.6, boxShadow:'2px 2px 0 rgba(0,0,0,.06)' }}>
                 {msg.role === 'user' ? (
                   <div>
                     {msg.attachments?.length > 0 && (
@@ -1838,7 +1845,7 @@ function InputArea({ tabId, placeholder }) {
   const onInput = e => { setText(e.target.value); e.target.style.height='auto'; e.target.style.height = Math.min(e.target.scrollHeight,160)+'px'; };
 
   return (
-    <div style={{ padding: isMobile ? '8px 10px' : '12px 16px', borderTop:`1.5px solid #e8e5dc`, background:'white', flexShrink:0 }}>
+    <div style={{ padding: isMobile ? '10px 12px' : '12px 16px', borderTop:`1.5px solid #e8e5dc`, background:'white', flexShrink:0 }}>
       {!hasKey && (
         <div style={{ marginBottom:8, padding:'8px 12px', background:'#fff5e6', border:`1px solid ${C.orange}`, borderRadius:8, fontSize:12, color:'#c07030', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <span>Clé API OpenRouter requise pour envoyer des messages.</span>
@@ -1889,7 +1896,7 @@ function InputArea({ tabId, placeholder }) {
                 onClick={toggleVoice}
                 className={listening ? 'mic-active' : ''}
                 title={listening ? 'Arrêter la reconnaissance vocale' : 'Parler'}
-                style={{ background: listening ? C.red : '#f1eee5', border:`1px solid ${listening ? C.red : C.faint}`, borderRadius:'50%', width:32, height:32, cursor:'pointer', color: listening ? 'white' : '#888', display:'flex', alignItems:'center', justifyContent:'center', fontSize:15, flexShrink:0, transition:'background .2s,border-color .2s' }}>
+                style={{ background: listening ? C.red : '#f1eee5', border:`1px solid ${listening ? C.red : C.faint}`, borderRadius:'50%', width: isMobile ? 40 : 32, height: isMobile ? 40 : 32, cursor:'pointer', color: listening ? 'white' : '#888', display:'flex', alignItems:'center', justifyContent:'center', fontSize: isMobile ? 18 : 15, flexShrink:0, transition:'background .2s,border-color .2s' }}>
                 🎤
               </button>
             )}
@@ -1905,7 +1912,7 @@ function InputArea({ tabId, placeholder }) {
                 style={{ background:C.red, border:'none', borderRadius:8, color:'white', padding:'6px 12px', fontSize:13, cursor:'pointer', fontWeight:600 }}>■ Stop</button>
             )}
             <button onClick={submit} disabled={(!text.trim() && !attachments.length) || state.streaming}
-              style={{ background: (text.trim() || attachments.length) && !state.streaming ? C.ink : C.faint, border:'none', borderRadius:8, color:'white', width:36, height:36, cursor: (text.trim() || attachments.length) && !state.streaming ? 'pointer' : 'not-allowed', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center', transition:'background .15s' }}>↑</button>
+              style={{ background: (text.trim() || attachments.length) && !state.streaming ? C.ink : C.faint, border:'none', borderRadius:8, color:'white', width: isMobile ? 44 : 36, height: isMobile ? 44 : 36, cursor: (text.trim() || attachments.length) && !state.streaming ? 'pointer' : 'not-allowed', fontSize: isMobile ? 20 : 16, display:'flex', alignItems:'center', justifyContent:'center', transition:'background .15s' }}>↑</button>
           </div>
         </div>
       </div>
@@ -2791,7 +2798,7 @@ function Settings() {
           <section>
             <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:8 }}>Clé API OpenRouter</div>
             <div style={{ display:'flex', gap:8 }}>
-              <input type={showKey ? 'text' : 'password'} value={s.apiKey || ''} onChange={e => setS(p => ({ ...p, apiKey:e.target.value }))} placeholder="sk-or-v1-…"
+              <input type={showKey ? 'text' : 'password'} value={s.apiKey || ''} onChange={e => { const k = e.target.value; setS(p => ({ ...p, apiKey:k })); if (k) { lsSet('apikey_backup', k); } }} placeholder="sk-or-v1-…"
                 style={{ flex:1, padding:'8px 12px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:14, fontFamily:'monospace', outline:'none', background:C.paper }} />
               <button onClick={() => setShowKey(v => !v)} style={{ background:'#f1eee5', border:`1.5px solid ${C.faint}`, borderRadius:8, padding:'0 12px', cursor:'pointer', fontSize:14 }}>{showKey ? '🙈' : '👁️'}</button>
             </div>
@@ -3003,6 +3010,7 @@ function Settings() {
           <div style={{ fontSize:13, color:'#555', background:'#f7f4ec', padding:'10px 12px', borderRadius:8 }}>
             💡 Conseil : Haiku pour les enfants ($0.8/M), Sonnet pour les tâches complexes.
           </div>
+          <div style={{ fontSize:11, color:'#bbb', textAlign:'center', padding:'4px 0' }}>Ricard AI v{APP_VERSION}</div>
         </div>
         <div style={{ padding:'12px 18px', borderTop:`1.5px solid #e8e5dc`, display:'flex', gap:10 }}>
           <button onClick={() => dispatch({ type:'TOGGLE_SETTINGS' })} style={{ flex:1, background:'#f1eee5', border:`1.5px solid ${C.faint}`, borderRadius:8, padding:'9px 0', cursor:'pointer', fontSize:14 }}>Annuler</button>
