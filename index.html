@@ -326,7 +326,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.15';
+const APP_VERSION = '1.16';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -665,6 +665,7 @@ function loadSettings() {
       zya:   { enabled:false, start:'08:00', end:'21:00' },
       zelie: { enabled:false, start:'08:00', end:'21:00' },
     },
+    dailyGoals:      s.dailyGoals      ?? { zya:'', zelie:'' },
   };
 }
 function dateKey() { const d = new Date(); return `${d.getFullYear()}_${d.getMonth()+1}_${d.getDate()}`; }
@@ -944,6 +945,37 @@ function useVoiceInput(onResult) {
   return { listening, supported, toggle, interimText };
 }
 
+// ─── Helpers gamification ────────────────────────────────────
+const RANKS = [
+  { min:0,   label:'🌱 Graine',    color:'#86efac' },
+  { min:10,  label:'⚡ Étincelle', color:'#fbbf24' },
+  { min:50,  label:'🌟 Nova',      color:'#a78bfa' },
+  { min:150, label:'🔥 Soleil',    color:'#f97316' },
+  { min:400, label:'🚀 Maître',    color:'#06b6d4' },
+];
+function getRank(xp) {
+  return [...RANKS].reverse().find(r => xp >= r.min) || RANKS[0];
+}
+function getXP(pid) {
+  return loadCostLog().filter(e => e.profile === pid).length;
+}
+function getStreak(pid) {
+  return parseInt(localStorage.getItem(`ricard_streak_${pid}_count`) || '0', 10);
+}
+function updateStreak(pid) {
+  const base = `ricard_streak_${pid}`;
+  const lastDay = localStorage.getItem(`${base}_lastDay`) || '';
+  const count   = parseInt(localStorage.getItem(`${base}_count`) || '0', 10);
+  const today   = dateKey();
+  if (lastDay === today) return count; // déjà mis à jour aujourd'hui
+  const d = new Date(); d.setDate(d.getDate() - 1);
+  const yesterday = `${d.getFullYear()}_${d.getMonth()+1}_${d.getDate()}`;
+  const newCount = (lastDay === yesterday || !lastDay) ? count + 1 : 1;
+  localStorage.setItem(`${base}_lastDay`, today);
+  localStorage.setItem(`${base}_count`,   String(newCount));
+  return newCount;
+}
+
 // ─── Helpers contrôle parental ───────────────────────────────
 function isInAccessHours(hours) {
   if (!hours?.enabled) return true;
@@ -987,6 +1019,7 @@ function initTab(pid, tabId, settings) {
   return { convs: convs.length ? convs : [active], activeId: active.id };
 }
 function buildState(pid) {
+  updateStreak(pid); // Met à jour le streak dès la connexion
   const settings = loadSettings();
   const tabs = {};
   TABS.forEach(t => { tabs[t] = initTab(pid, t, settings); });
@@ -1209,6 +1242,20 @@ function AppProvider({ children }) {
   // Persist settings
   useEffect(() => { saveSettings(state.settings); }, [state.settings]);
 
+  // Toast milestone streak à la connexion
+  useEffect(() => {
+    if (!state.profile) return;
+    const streak = getStreak(state.profile);
+    const milestones = [3, 7, 14, 30, 60, 100];
+    if (!milestones.includes(streak)) return;
+    const toastKey = `streak_toast_${state.profile}_${streak}`;
+    if (lsGet(toastKey, false)) return;
+    lsSet(toastKey, true);
+    const name = getProfile(state.profile)?.name;
+    const emojis = { 3:'🌟', 7:'🔥', 14:'💪', 30:'🏆', 60:'👑', 100:'🚀' };
+    dispatch({ type:'SHOW_TOAST', payload:{ message:`${emojis[streak] || '🎉'} ${streak} jours de suite pour ${name} ! Incroyable !`, type:'info', duration:5000 }});
+  }, [state.profile]);
+
   // Auto-lock sur inactivité
   useEffect(() => {
     const mins = state.settings.autoLockMinutes;
@@ -1300,6 +1347,13 @@ function AppProvider({ children }) {
         const warnKey80  = `budget_warn80_${pid}_${monthKey()}`;
         const warnKey100 = `budget_warn100_${pid}_${monthKey()}`;
         const profName = getProfile(pid)?.name || pid;
+        // ── Toast level-up rang ─────────────────────────
+        const xpNow = getXP(pid);
+        const rankNow  = getRank(xpNow);
+        const rankPrev = getRank(xpNow - 1);
+        if (rankNow.min !== rankPrev.min) {
+          dispatch({ type:'SHOW_TOAST', payload:{ message:`🎉 Nouveau rang pour ${profName} : ${rankNow.label} !`, type:'info', duration:6000 }});
+        }
         if (pct >= 1.0 && !lsGet(warnKey100, false)) {
           lsSet(warnKey100, true);
           dispatch({ type:'SHOW_TOAST', payload:{ message:`🚨 Budget épuisé pour ${profName} ! (${budget}$)`, type:'error', duration:7000 }});
@@ -1708,6 +1762,17 @@ function ProfileSelector() {
               </div>
               <div style={{ fontFamily:'var(--pc-font-display)', fontSize:22, color:C.ink }}>{p.name}</div>
               {p.age && <div style={{ fontSize:13, color:C.muted, background:C.shade, padding:'3px 9px', borderRadius:999, border:`1px solid ${C.faint}` }}>{p.age} ans</div>}
+              {/* Streak + Rang */}
+              {(() => {
+                const streak = getStreak(p.id);
+                const rank = getRank(getXP(p.id));
+                return (
+                  <div style={{ display:'flex', gap:5, flexWrap:'wrap', justifyContent:'center' }}>
+                    {streak > 0 && <span style={{ fontSize:11, background:'#fff7e6', padding:'2px 7px', borderRadius:999, border:`1px solid #fbbf24`, color:'#b45309' }}>🔥 {streak}j</span>}
+                    <span style={{ fontSize:11, background:'#f7f4ec', padding:'2px 7px', borderRadius:999, border:`1px solid #e8e5dc`, color:'#555' }}>{rank.label}</span>
+                  </div>
+                );
+              })()}
               {/* Blocage horaire */}
               {blocked?.pid === p.id && (
                 <div style={{ position:'absolute', inset:0, background:'rgba(17,17,17,.88)', borderRadius:'var(--pc-radius-1)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:6, padding:12 }}>
@@ -2389,6 +2454,10 @@ function ZyaTab() {
     dispatch({ type:'SET_SETTINGS', payload: newSettings });
   };
 
+  const zyaStreak = getStreak('zya');
+  const zyaRank   = getRank(getXP('zya'));
+  const zyaGoal   = state.settings.dailyGoals?.zya || '';
+
   return (
     <div style={{ flex:1, display:'flex', flexDirection:'column', minHeight:0, background:'#f8f4ff' }}>
       <div style={{ padding:'10px 20px', borderBottom:`1.5px solid #d4c8f0`, background:'white', display:'flex', alignItems:'center', justifyContent:'space-between', minHeight:52, flexShrink:0 }}>
@@ -2396,7 +2465,11 @@ function ZyaTab() {
           <div style={{ width:36, height:36, borderRadius:'50%', background:`linear-gradient(135deg,${C.purple},#c87dd4)`, border:`2px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18 }}>✨</div>
           <div>
             <div style={{ fontSize:16, fontWeight:700, color:C.purple }}>Nova</div>
-            <div style={{ fontSize:11, color:'#aaa' }}>IA de Zya · 13 ans</div>
+            <div style={{ fontSize:11, color:'#aaa', display:'flex', gap:6 }}>
+              IA de Zya
+              {zyaStreak > 0 && <span style={{ color:'#b45309' }}>🔥 {zyaStreak}j</span>}
+              <span style={{ color:C.purple }}>{zyaRank.label}</span>
+            </div>
           </div>
         </div>
         <div style={{ display:'flex', gap:8, alignItems:'center' }}>
@@ -2413,6 +2486,16 @@ function ZyaTab() {
           </div>
         </div>
       </div>
+      {/* Bannière objectif du jour */}
+      {zyaGoal && (
+        <div style={{ padding:'7px 20px', background:'linear-gradient(90deg,#ede9fe,#f5f3ff)', borderBottom:`1.5px solid #c4b5fd`, display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+          <span style={{ fontSize:16 }}>🎯</span>
+          <div>
+            <span style={{ fontSize:11, fontWeight:700, color:C.purple, textTransform:'uppercase', letterSpacing:.5 }}>Objectif du jour · </span>
+            <span style={{ fontSize:13, color:'#4c1d95' }}>{zyaGoal}</span>
+          </div>
+        </div>
+      )}
       {!conv?.messages?.length ? (
         <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding: isMobile ? 20 : 32, gap:16 }}>
           <div style={{ fontSize: isMobile ? 36 : 48 }}>✨</div>
@@ -2450,6 +2533,10 @@ function ZelieTab() {
     dispatch({ type:'SET_SETTINGS', payload: newSettings });
   };
 
+  const zelieStreak = getStreak('zelie');
+  const zelieRank   = getRank(getXP('zelie'));
+  const zelieGoal   = state.settings.dailyGoals?.zelie || '';
+
   return (
     <div style={{ flex:1, display:'flex', flexDirection:'column', minHeight:0, background:'#fff5f9' }}>
       <div style={{ padding:'10px 20px', borderBottom:`1.5px solid #f8c8dc`, background:'white', display:'flex', alignItems:'center', justifyContent:'space-between', minHeight:52, flexShrink:0 }}>
@@ -2457,7 +2544,11 @@ function ZelieTab() {
           <div style={{ width:40, height:40, borderRadius:'50%', background:`linear-gradient(135deg,${C.pink},${C.yellow})`, border:`2px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20 }}>🌸</div>
           <div>
             <div style={{ fontSize:16, fontWeight:700, color:C.pink, fontFamily:"'Permanent Marker',cursive" }}>Pixel</div>
-            <div style={{ fontSize:11, color:'#aaa' }}>ami robot de Zélie · 9 ans</div>
+            <div style={{ fontSize:11, color:'#aaa', display:'flex', gap:6 }}>
+              Ami robot de Zélie
+              {zelieStreak > 0 && <span style={{ color:'#b45309' }}>🔥 {zelieStreak}j</span>}
+              <span style={{ color:C.pink }}>{zelieRank.label}</span>
+            </div>
           </div>
         </div>
         <div style={{ display:'flex', gap:6, alignItems:'center' }}>
@@ -2471,6 +2562,16 @@ function ZelieTab() {
           ))}
         </div>
       </div>
+      {/* Bannière objectif du jour */}
+      {zelieGoal && (
+        <div style={{ padding:'7px 20px', background:'linear-gradient(90deg,#fce7f3,#fff1f7)', borderBottom:`1.5px solid #fbcfe8`, display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+          <span style={{ fontSize:16 }}>🎯</span>
+          <div>
+            <span style={{ fontSize:11, fontWeight:700, color:C.pink, textTransform:'uppercase', letterSpacing:.5 }}>Objectif du jour · </span>
+            <span style={{ fontSize:13, color:'#831843' }}>{zelieGoal}</span>
+          </div>
+        </div>
+      )}
       {!conv?.messages?.length ? (
         <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding: isMobile ? 20 : 32, gap:16 }}>
           <div style={{ width: isMobile ? 72 : 100, height: isMobile ? 72 : 100, borderRadius:'50%', background:`linear-gradient(135deg,${C.pink},${C.yellow})`, border:`3px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize: isMobile ? 36 : 50, boxShadow:'4px 4px 0 rgba(0,0,0,.1)' }}>🌸</div>
@@ -2497,10 +2598,11 @@ function ZelieTab() {
 function FamilyTab() {
   const { state } = useApp();
   const isMobile = useIsMobile();
-  const [msgs, setMsgs] = useState(() => lsGet('family_msgs', []));
-  const [text, setText] = useState('');
-  const bottomRef = useRef(null);
-  const profile = getProfile(state.profile);
+  const [view, setView]   = useState('messages'); // 'messages' | 'dashboard'
+  const [msgs, setMsgs]   = useState(() => lsGet('family_msgs', []));
+  const [text, setText]   = useState('');
+  const bottomRef         = useRef(null);
+  const profile           = getProfile(state.profile);
 
   useEffect(() => {
     if (bottomRef.current) bottomRef.current.scrollTop = bottomRef.current.scrollHeight;
@@ -2532,16 +2634,119 @@ function FamilyTab() {
 
   const profileColor = (fromId) => getProfile(fromId)?.color || C.muted;
 
+  // Données dashboard
+  const weekAgo   = Date.now() - 7 * 24 * 3600 * 1000;
+  const costLog   = loadCostLog();
+  const weekMsgs  = pid => costLog.filter(e => e.profile === pid && e.ts >= weekAgo).length;
+  const dailyGoals = state.settings.dailyGoals || {};
+
   return (
     <div style={{ flex:1, display:'flex', flexDirection:'column', minHeight:0, background:'#f0faf8' }}>
-      <div style={{ padding:'10px 20px', borderBottom:`1.5px solid #b8e0d8`, background:'white', display:'flex', alignItems:'center', gap:12, minHeight:52, flexShrink:0 }}>
-        <span style={{ fontSize:22 }}>👨‍👩‍👧</span>
-        <div>
-          <div style={{ fontSize:16, fontWeight:700, color:C.teal }}>Famille Ricard</div>
-          <div style={{ fontSize:11, color:'#aaa' }}>Tableau de messages partagé</div>
+      {/* Header avec onglets */}
+      <div style={{ padding:'10px 20px', borderBottom:`1.5px solid #b8e0d8`, background:'white', display:'flex', alignItems:'center', justifyContent:'space-between', minHeight:52, flexShrink:0 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+          <span style={{ fontSize:22 }}>👨‍👩‍👧</span>
+          <div>
+            <div style={{ fontSize:16, fontWeight:700, color:C.teal }}>Famille Ricard</div>
+            <div style={{ fontSize:11, color:'#aaa' }}>{view === 'messages' ? 'Messages partagés' : 'Tableau de bord famille'}</div>
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:0, border:`2px solid ${C.ink}`, borderRadius:999, overflow:'hidden' }}>
+          {[{ id:'messages', label:'💬 Messages' }, { id:'dashboard', label:'📊 Dashboard' }].map(v => (
+            <button key={v.id} onClick={() => setView(v.id)}
+              style={{ padding:'5px 14px', background: view===v.id ? C.teal : 'transparent', color: view===v.id ? 'white' : C.teal, border:'none', cursor:'pointer', fontSize:12, fontWeight: view===v.id ? 700 : 400 }}>
+              {v.label}
+            </button>
+          ))}
         </div>
       </div>
-      <div ref={bottomRef} className="scroll-y" style={{ flex:1, minHeight:0, padding: isMobile ? '12px 10px' : '20px 24px', display:'flex', flexDirection:'column', gap:10 }}>
+
+      {/* Vue Dashboard */}
+      {view === 'dashboard' && (
+        <div className="scroll-y" style={{ flex:1, minHeight:0, padding: isMobile ? '16px 12px' : '20px 28px', display:'flex', flexDirection:'column', gap:20 }}>
+          {/* Cards profils */}
+          <div>
+            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:12 }}>Progression de la famille</div>
+            <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap:12 }}>
+              {PROFILES.map(p => {
+                const streak = getStreak(p.id);
+                const xp     = getXP(p.id);
+                const rank   = getRank(xp);
+                const msgs7  = weekMsgs(p.id);
+                return (
+                  <div key={p.id} style={{ background:'white', border:`3px solid ${C.ink}`, borderRadius:'var(--pc-radius-3)', padding:'14px 12px', display:'flex', flexDirection:'column', alignItems:'center', gap:8, boxShadow:`4px 4px 0 ${C.ink}` }}>
+                    <div style={{ width:44, height:44, borderRadius:'50%', background:p.color, border:`2px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, fontFamily:"'Permanent Marker',cursive", fontWeight:700 }}>{p.label}</div>
+                    <div style={{ fontFamily:'var(--pc-font-display)', fontSize:15, color:C.ink }}>{p.name}</div>
+                    <div style={{ fontSize:18, fontWeight:700, background:'#fff7e6', padding:'3px 10px', borderRadius:999, border:`1.5px solid #fbbf24`, color:'#92400e' }}>{streak > 0 ? `🔥 ${streak}j` : '—'}</div>
+                    <div style={{ fontSize:11, padding:'2px 8px', borderRadius:999, border:`1.5px solid #e8e5dc`, color:'#555', background:'#f7f4ec' }}>{rank.label}</div>
+                    <div style={{ fontSize:11, color:C.muted }}>{msgs7} msg cette semaine</div>
+                    {/* Barre XP */}
+                    {(() => {
+                      const curRank  = rank;
+                      const nextRank = RANKS.find(r => r.min > curRank.min);
+                      if (!nextRank) return <div style={{ fontSize:10, color:C.teal }}>Rang max atteint !</div>;
+                      const pct = Math.min(100, ((xp - curRank.min) / (nextRank.min - curRank.min)) * 100);
+                      return (
+                        <div style={{ width:'100%' }}>
+                          <div style={{ fontSize:10, color:'#aaa', textAlign:'right', marginBottom:2 }}>{xp}/{nextRank.min}</div>
+                          <div style={{ height:5, background:C.shade, borderRadius:999, overflow:'hidden' }}>
+                            <div style={{ height:'100%', width:`${pct}%`, background: curRank.color, borderRadius:999, transition:'width .5s' }} />
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Objectifs en cours */}
+          {(dailyGoals.zya || dailyGoals.zelie) && (
+            <div>
+              <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>🎯 Objectifs en cours</div>
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {['zya','zelie'].filter(pid => dailyGoals[pid]).map(pid => {
+                  const p = getProfile(pid);
+                  return (
+                    <div key={pid} style={{ background:'white', border:`2px solid ${p?.color}`, borderRadius:10, padding:'10px 14px', display:'flex', alignItems:'center', gap:10 }}>
+                      <div style={{ width:28, height:28, borderRadius:'50%', background:p?.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontFamily:"'Permanent Marker',cursive", fontWeight:700, flexShrink:0 }}>{p?.label}</div>
+                      <div>
+                        <div style={{ fontSize:11, fontWeight:600, color:p?.color }}>{p?.name}</div>
+                        <div style={{ fontSize:13, color:C.ink }}>{dailyGoals[pid]}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Classement semaine */}
+          <div>
+            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>📈 Activité cette semaine</div>
+            <div style={{ background:'white', border:`2px solid ${C.ink}`, borderRadius:10, overflow:'hidden' }}>
+              {[...PROFILES].sort((a,b) => weekMsgs(b.id) - weekMsgs(a.id)).map((p, i) => {
+                const n = weekMsgs(p.id);
+                const maxN = Math.max(...PROFILES.map(x => weekMsgs(x.id)), 1);
+                return (
+                  <div key={p.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 14px', borderBottom: i < 3 ? `1px solid ${C.shade}` : 'none' }}>
+                    <span style={{ fontSize:13, color:'#aaa', width:16, textAlign:'center' }}>{['🥇','🥈','🥉',''][i] || i+1}</span>
+                    <div style={{ width:24, height:24, borderRadius:'50%', background:p.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontFamily:"'Permanent Marker',cursive", fontWeight:700, flexShrink:0 }}>{p.label}</div>
+                    <span style={{ flex:1, fontSize:14 }}>{p.name}</span>
+                    <div style={{ width:80, height:6, background:C.shade, borderRadius:999, overflow:'hidden' }}>
+                      <div style={{ height:'100%', width:`${(n/maxN)*100}%`, background:p.color, borderRadius:999 }} />
+                    </div>
+                    <span style={{ fontSize:13, fontWeight:600, color:C.ink, width:28, textAlign:'right' }}>{n}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Vue Messages */}
+      <div ref={bottomRef} className="scroll-y" style={{ flex:1, minHeight:0, padding: isMobile ? '12px 10px' : '20px 24px', display: view === 'messages' ? 'flex' : 'none', flexDirection:'column', gap:10 }}>
         {msgs.length === 0 && (
           <div style={{ textAlign:'center', color:C.muted, marginTop:40, fontSize:14 }}>
             <div style={{ fontSize:40, marginBottom:12 }}>👨‍👩‍👧</div>
@@ -2570,7 +2775,7 @@ function FamilyTab() {
           );
         })}
       </div>
-      <div style={{ padding: isMobile ? '8px 10px' : '12px 16px', borderTop:`1.5px solid #b8e0d8`, background:'white', flexShrink:0, display:'flex', gap:8 }}>
+      <div style={{ padding: isMobile ? '8px 10px' : '12px 16px', borderTop:`1.5px solid #b8e0d8`, background:'white', flexShrink:0, display: view === 'messages' ? 'flex' : 'none', gap:8 }}>
         <textarea value={text} onChange={e => setText(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); post(); } }}
           placeholder="Écrire un message à la famille…" rows={1}
@@ -3280,6 +3485,38 @@ function Settings() {
               })}
             </div>
             <p style={{ fontSize:11, color:'#aaa', margin:'8px 0 0' }}>Hors de ces horaires, les enfants voient un écran de blocage. Les parents ne sont pas limités.</p>
+          </section>
+
+          {/* ── 🎯 Objectifs du jour ────────────────────── */}
+          <section>
+            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>🎯 Objectifs du jour</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              {['zya','zelie'].map(pid => {
+                const p = getProfile(pid);
+                return (
+                  <div key={pid}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:5 }}>
+                      <div style={{ width:22, height:22, borderRadius:'50%', background:p?.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontFamily:"'Permanent Marker',cursive", fontWeight:700, flexShrink:0 }}>{p?.label}</div>
+                      <span style={{ fontSize:13, fontWeight:600 }}>{p?.name}</span>
+                    </div>
+                    <div style={{ display:'flex', gap:8 }}>
+                      <input type="text" maxLength={80}
+                        value={s.dailyGoals?.[pid] || ''}
+                        onChange={e => setS(prev => ({ ...prev, dailyGoals: { ...prev.dailyGoals, [pid]: e.target.value } }))}
+                        placeholder={`Ex: Revoir la table de 7, Lire 20 min…`}
+                        style={{ flex:1, padding:'8px 12px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:13, outline:'none', background:C.paper }} />
+                      {s.dailyGoals?.[pid] && (
+                        <button onClick={() => setS(prev => ({ ...prev, dailyGoals: { ...prev.dailyGoals, [pid]: '' } }))}
+                          style={{ background:'#f1eee5', border:`1.5px solid ${C.faint}`, borderRadius:8, padding:'0 10px', cursor:'pointer', fontSize:13 }}>✕</button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <p style={{ fontSize:11, color:'#aaa', margin:'8px 0 0' }}>
+              Visible en bannière dans l'onglet de chaque enfant et dans le Dashboard famille. Vide = pas de bannière.
+            </p>
           </section>
 
           {/* ── Modèles par défaut ──────────────────────── */}
