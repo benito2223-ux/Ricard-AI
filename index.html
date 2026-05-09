@@ -5,7 +5,7 @@
 <title>Ricard AI</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Share+Tech+Mono&family=Kalam:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
 <!-- PWA -->
 <link rel="manifest" href="./manifest.json">
@@ -15,12 +15,32 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Ricard AI">
 <style>
+/* ── DESIGN SYSTEM — Punk Comics Fluo (Mitchell) ── */
+:root {
+  --pc-color-orange:  #FF6B00;
+  --pc-color-red:     #D83025;
+  --pc-color-cyan:    #00F0FF;
+  --pc-color-yellow:  #E5FF00;
+  --pc-color-black:   #111111;
+  --pc-color-paper:   #F4F0EB;
+  --pc-color-fuchsia: #FF0099;
+  --pc-font-display:  'Permanent Marker', 'Bangers', cursive;
+  --pc-font-body:     'Share Tech Mono', 'Courier New', monospace;
+  --pc-border:        3px solid #111111;
+  --pc-border-thick:  4px solid #111111;
+  --pc-shadow:        5px 5px 0px #111111;
+  --pc-shadow-lg:     8px 8px 0px #111111;
+  --pc-shadow-hover:  10px 10px 0px #111111;
+  --pc-radius-1:      255px 15px 225px 15px / 15px 225px 15px 255px;
+  --pc-radius-2:      15px 225px 15px 255px / 255px 15px 225px 15px;
+  --pc-radius-3:      8px 120px 8px 80px / 80px 8px 120px 8px;
+}
 *, *::before, *::after { box-sizing: border-box; }
 html, body, #root { margin: 0; padding: 0; height: 100%; overflow: hidden; }
-body { font-family: 'Inter', system-ui, sans-serif; background: #fbfaf6; color: #1a1a1a; -webkit-font-smoothing: antialiased; font-size: 17px; }
-* { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,.12) transparent; }
-*::-webkit-scrollbar { width: 6px; height: 6px; }
-*::-webkit-scrollbar-thumb { background: rgba(0,0,0,.12); border-radius: 3px; }
+body { font-family: var(--pc-font-body); background: var(--pc-color-paper); color: var(--pc-color-black); -webkit-font-smoothing: antialiased; font-size: 16px; }
+* { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,.25) transparent; }
+*::-webkit-scrollbar { width: 7px; height: 7px; }
+*::-webkit-scrollbar-thumb { background: rgba(0,0,0,.3); border-radius: 3px; }
 button { font-family: inherit; box-sizing: border-box; }
 textarea { display: block; }
 @keyframes pulse    { 0%,100% { opacity:1 } 50% { opacity:.3 } }
@@ -60,7 +80,7 @@ html, body, #root { height: 100dvh; }
 /* Bottom nav safe area */
 .mobile-nav {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
-  background: white; border-top: 1.5px solid #1a1a1a;
+  background: var(--pc-color-paper); border-top: 4px solid var(--pc-color-black);
   display: flex; align-items: stretch;
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
@@ -282,7 +302,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.12';
+const APP_VERSION = '1.13';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -295,13 +315,13 @@ function useIsMobile() {
   return m;
 }
 
-// ─── Palette ────────────────────────────────────────────────
+// ─── Palette — Punk Comics Fluo (Mitchell Design System) ────
 const C = {
-  ink:'#1a1a1a', paper:'#fbfaf6', shade:'#f1eee5',
-  muted:'#888', faint:'#ccc',
-  red:'#e35a4f', yellow:'#f4cb4f', blue:'#3a6dd9',
-  green:'#5fa055', pink:'#e88ab2', purple:'#8a6fc7',
-  orange:'#e8975a', teal:'#4ba39a',
+  ink:'#111111', paper:'#F4F0EB', shade:'#EAE5D8',
+  muted:'#555', faint:'#BBBBBB',
+  red:'#D83025', yellow:'#E5FF00', blue:'#00F0FF',
+  green:'#4CAF50', pink:'#FF0099', purple:'#9B4DCA',
+  orange:'#FF6B00', teal:'#00C8D0',
 };
 
 // ─── Models ─────────────────────────────────────────────────
@@ -1342,7 +1362,7 @@ function PinEntry() {
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.65)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center' }}>
       <div style={{ background:'white', borderRadius:24, padding:'32px 28px', width:300, textAlign:'center', border:`2.5px solid ${C.ink}`, boxShadow:'8px 10px 0 rgba(0,0,0,.2)' }}>
         {/* Avatar */}
-        <div style={{ width:60, height:60, borderRadius:'50%', background: profile?.color || C.orange, border:`2px solid ${C.ink}`, margin:'0 auto 12px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:26, fontFamily:"'Kalam',cursive", fontWeight:700, color:'white' }}>{profile?.label}</div>
+        <div style={{ width:60, height:60, borderRadius:'50%', background: profile?.color || C.orange, border:`2px solid ${C.ink}`, margin:'0 auto 12px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:26, fontFamily:"'Permanent Marker',cursive", fontWeight:700, color:'white' }}>{profile?.label}</div>
         <div style={{ fontSize:18, fontWeight:700, marginBottom:2 }}>{profile?.name}</div>
         <div style={{ fontSize:13, color:C.muted, marginBottom:24 }}>Code PIN requis 🔒</div>
 
@@ -1388,11 +1408,11 @@ function ProfileSelector() {
   const totalSpent = Object.values(costs).reduce((a,b) => a+b, 0);
 
   return (
-    <div style={{ minHeight:'100dvh', background:C.paper, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', fontFamily:'Inter,sans-serif', padding: isMobile ? '24px 16px' : 40, paddingTop: isMobile ? 'max(24px, calc(env(safe-area-inset-top, 0px) + 16px))' : '40px' }}>
+    <div style={{ minHeight:'100dvh', background:C.paper, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', fontFamily:'var(--pc-font-body)', padding: isMobile ? '24px 16px' : 40, paddingTop: isMobile ? 'max(24px, calc(env(safe-area-inset-top, 0px) + 16px))' : '40px' }}>
       <div style={{ marginBottom: isMobile ? 28 : 48, textAlign:'center' }}>
-        <div style={{ fontFamily:"'Kalam',cursive", fontSize: isMobile ? 38 : 52, fontWeight:700, color:C.ink, letterSpacing:-1 }}>Ricard AI</div>
-        <div style={{ marginTop:4, fontSize: isMobile ? 16 : 18, color:C.muted }}>Qui utilise l'IA ce soir ?</div>
-        <div style={{ marginTop:4, fontSize:11, color:'#bbb' }}>v{APP_VERSION}</div>
+        <div style={{ fontFamily:'var(--pc-font-display)', fontSize: isMobile ? 52 : 72, color:C.ink, textShadow:`4px 4px 0 ${C.orange}, 8px 8px 0 ${C.yellow}`, lineHeight:1.1 }}>Ricard AI</div>
+        <div style={{ marginTop:8, fontSize: isMobile ? 15 : 17, color:C.muted, fontFamily:'var(--pc-font-body)' }}>Qui utilise l'IA ce soir ?</div>
+        <div style={{ marginTop:4, fontSize:12, color:'#999', fontFamily:'var(--pc-font-body)' }}>v{APP_VERSION}</div>
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: isMobile ? 14 : 24, marginBottom: isMobile ? 28 : 48, width:'100%', maxWidth:700 }}>
@@ -1409,17 +1429,17 @@ function ProfileSelector() {
                 dispatch({ type:'SET_PROFILE', payload:p.id });
               }
             }}
-              style={{ background:'white', border:`2px solid ${C.ink}`, borderRadius:16, padding:'24px 16px', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:10, boxShadow:`3px 4px 0 ${C.ink}`, transition:'transform .1s,box-shadow .1s', position:'relative' }}
-              onMouseEnter={e => { e.currentTarget.style.transform='translateY(-2px)'; e.currentTarget.style.boxShadow=`3px 6px 0 ${C.ink}`; }}
-              onMouseLeave={e => { e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow=`3px 4px 0 ${C.ink}`; }}
+              style={{ background:'white', border:`4px solid ${C.ink}`, borderRadius:'var(--pc-radius-1)', padding:'24px 16px', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:10, boxShadow:`var(--pc-shadow)`, transition:'all 0.1s steps(3)', position:'relative' }}
+              onMouseEnter={e => { e.currentTarget.style.transform='translate(-4px,-4px)'; e.currentTarget.style.boxShadow='var(--pc-shadow-hover)'; e.currentTarget.style.background=C.yellow; }}
+              onMouseLeave={e => { e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow='var(--pc-shadow)'; e.currentTarget.style.background='white'; }}
             >
               {p.admin && state.settings.adminPin && (
                 <div style={{ position:'absolute', top:10, right:10, fontSize:14 }}>🔒</div>
               )}
-              <div style={{ width:72, height:72, borderRadius:'50%', background:p.color, border:`2px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:30, fontFamily:"'Kalam',cursive", fontWeight:700 }}>
+              <div style={{ width:72, height:72, borderRadius:'50%', background:p.color, border:`2px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:30, fontFamily:"'Permanent Marker',cursive", fontWeight:700 }}>
                 {p.label}
               </div>
-              <div style={{ fontSize:20, fontWeight:700 }}>{p.name}</div>
+              <div style={{ fontFamily:'var(--pc-font-display)', fontSize:22, color:C.ink }}>{p.name}</div>
               {p.age && <div style={{ fontSize:13, color:C.muted, background:C.shade, padding:'3px 9px', borderRadius:999, border:`1px solid ${C.faint}` }}>{p.age} ans</div>}
               <div style={{ width:'100%' }}>
                 <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:C.muted, marginBottom:3 }}>
@@ -1471,14 +1491,14 @@ function Sidebar({ collapsed, onToggle }) {
   const overBudget = state.monthCost > budget * 0.8;
 
   return (
-    <div style={{ width: collapsed ? 56 : 220, minWidth: collapsed ? 56 : 220, background:'#f3f0e8', borderRight:`1.5px solid ${C.ink}`, display:'flex', flexDirection:'column', overflow:'hidden', transition:'width .2s,min-width .2s', flexShrink:0 }}>
+    <div style={{ width: collapsed ? 56 : 220, minWidth: collapsed ? 56 : 220, background:C.shade, borderRight:`4px solid ${C.ink}`, display:'flex', flexDirection:'column', overflow:'hidden', transition:'width .2s,min-width .2s', flexShrink:0 }}>
       {/* Header */}
       <div style={{ padding:'10px 10px', borderBottom:`1px dashed ${C.faint}`, display:'flex', alignItems:'center', gap:8, minHeight:52 }}>
         <button onClick={() => dispatch({ type:'SET_PROFILE', payload:null })}
-          style={{ background: profile?.color || C.orange, border:`2px solid ${C.ink}`, borderRadius:'50%', width:32, height:32, flexShrink:0, cursor:'pointer', fontSize:14, fontFamily:"'Kalam',cursive", fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center' }}
+          style={{ background: profile?.color || C.orange, border:`2px solid ${C.ink}`, borderRadius:'50%', width:32, height:32, flexShrink:0, cursor:'pointer', fontSize:14, fontFamily:"'Permanent Marker',cursive", fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center' }}
           title="Changer de profil">{profile?.label}</button>
         {!collapsed && <>
-          <span style={{ fontFamily:"'Kalam',cursive", fontSize:18, fontWeight:700, flex:1 }}>Ricard AI</span>
+          <span style={{ fontFamily:'var(--pc-font-display)', fontSize:20, color:C.ink, flex:1, textShadow:`2px 2px 0 ${C.orange}` }}>Ricard AI</span>
           <button onClick={onToggle} style={IB}>‹</button>
         </>}
         {collapsed && <button onClick={onToggle} style={{ ...IB, marginLeft:-4 }}>›</button>}
@@ -1490,7 +1510,7 @@ function Sidebar({ collapsed, onToggle }) {
           const active = state.tab === t.id;
           return (
             <button key={t.id} onClick={() => dispatch({ type:'SET_TAB', payload:t.id })}
-              style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', border: active ? `1.5px solid ${C.ink}` : '1.5px solid transparent', borderRadius:8, background: active ? 'white' : 'transparent', cursor:'pointer', textAlign:'left', width:'100%', boxShadow: active ? '2px 2px 0 rgba(0,0,0,.08)' : 'none' }}>
+              style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', border: active ? `3px solid ${C.ink}` : '2px solid transparent', borderRadius: active ? 'var(--pc-radius-3)' : 8, background: active ? C.yellow : 'transparent', cursor:'pointer', textAlign:'left', width:'100%', boxShadow: active ? `3px 3px 0 ${C.ink}` : 'none', transition:'all 0.1s steps(2)' }}>
               <span style={{ fontSize:16, lineHeight:1 }}>{t.icon}</span>
               {!collapsed && <span style={{ fontSize:15, fontWeight: active ? 600 : 400, color: t.color || C.ink }}>{t.label}</span>}
             </button>
@@ -1585,14 +1605,14 @@ function ChatHeader({ tabId, title, icon, accentColor }) {
   };
 
   return (
-    <div style={{ padding: isMobile ? '8px 12px' : '10px 20px', paddingTop: isMobile ? 'max(8px, env(safe-area-inset-top, 8px))' : '10px', borderBottom:`1.5px solid #e8e5dc`, background:'white', display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, minHeight: isMobile ? 'calc(52px + env(safe-area-inset-top, 0px))' : '52px', flexShrink:0 }}>
+    <div style={{ padding: isMobile ? '8px 12px' : '10px 20px', paddingTop: isMobile ? 'max(8px, env(safe-area-inset-top, 8px))' : '10px', borderBottom:`3px solid ${C.ink}`, background:C.paper, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, minHeight: isMobile ? 'calc(52px + env(safe-area-inset-top, 0px))' : '52px', flexShrink:0 }}>
       <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0, flex:1 }}>
         {isMobile && (
           <button onClick={() => dispatch({ type:'SET_PROFILE', payload:null })}
             style={{ background:'none', border:'none', cursor:'pointer', fontSize:22, padding:'0 4px', flexShrink:0, color:C.muted, minHeight:44, minWidth:44, display:'flex', alignItems:'center', justifyContent:'center' }}>☰</button>
         )}
         {icon && <span style={{ fontSize:18, flexShrink:0 }}>{icon}</span>}
-        <span style={{ fontSize: isMobile ? 16 : 18, fontWeight:600, color: accentColor || C.ink, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth: isMobile ? 150 : 300 }}>
+        <span style={{ fontFamily:'var(--pc-font-display)', fontSize: isMobile ? 16 : 20, color: accentColor || C.ink, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth: isMobile ? 150 : 300 }}>
           {conv?.title !== 'Nouvelle conversation' ? conv?.title : title}
         </span>
       </div>
@@ -1624,7 +1644,7 @@ function ChatHeader({ tabId, title, icon, accentColor }) {
           </button>
         )}
         <button onClick={() => dispatch({ type:'NEW_CONV', payload:{ tabId } })}
-          style={{ background:'none', border:`1px solid ${C.faint}`, borderRadius:6, width:28, height:28, cursor:'pointer', color:C.muted, fontSize:16, display:'flex', alignItems:'center', justifyContent:'center', padding:0, flexShrink:0 }} title="Nouvelle conversation">+</button>
+          style={{ background:C.yellow, border:`3px solid ${C.ink}`, borderRadius:'50%', width:32, height:32, cursor:'pointer', color:C.ink, fontSize:18, display:'flex', alignItems:'center', justifyContent:'center', padding:0, flexShrink:0, boxShadow:`2px 2px 0 ${C.ink}`, fontWeight:700 }} title="Nouvelle conversation">+</button>
         {isMobile && (
           <button onClick={() => dispatch({ type:'TOGGLE_SETTINGS' })}
             style={{ background:'none', border:'none', cursor:'pointer', fontSize:22, padding:'0 4px', color:C.muted, minHeight:44, minWidth:44, display:'flex', alignItems:'center', justifyContent:'center' }}>⚙️</button>
@@ -1696,10 +1716,10 @@ function ChatThread({ tabId }) {
             onMouseLeave={() => setHoveredId(null)}
             style={{ display:'flex', justifyContent: msg.role==='user' ? 'flex-end' : 'flex-start', gap:10, alignItems:'flex-start' }}>
             {msg.role === 'assistant' && (
-              <div style={{ width:28, height:28, borderRadius:'50%', background:C.blue, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, color:'white', fontFamily:"'Kalam',cursive", fontWeight:700, marginTop:2 }}>R</div>
+              <div style={{ width:32, height:32, borderRadius:'50%', background:C.blue, border:`3px solid ${C.ink}`, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, color:C.ink, fontFamily:'var(--pc-font-display)', boxShadow:`2px 2px 0 ${C.ink}`, marginTop:2 }}>R</div>
             )}
             <div style={{ maxWidth: isMobile ? '88%' : '72%' }}>
-              <div style={{ background: msg.role==='user' ? C.yellow : 'white', border:`1.5px solid ${C.ink}`, borderRadius: msg.role==='user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px', padding: isMobile ? '13px 17px' : '12px 16px', fontSize: isMobile ? 17 : 16, lineHeight:1.65, boxShadow:'2px 2px 0 rgba(0,0,0,.06)' }}>
+              <div style={{ background: msg.role==='user' ? C.yellow : 'white', border:`3px solid ${C.ink}`, borderRadius: msg.role==='user' ? 'var(--pc-radius-1)' : 'var(--pc-radius-2)', padding: isMobile ? '13px 17px' : '12px 16px', fontSize: isMobile ? 17 : 16, lineHeight:1.65, boxShadow:`4px 4px 0 ${C.ink}` }}>
                 {msg.role === 'user' ? (
                   <div>
                     {msg.attachments?.length > 0 && (
@@ -1853,7 +1873,7 @@ function InputArea({ tabId, placeholder }) {
       {/* Hidden file input */}
       <input ref={fileRef} type="file" accept="image/*,.pdf" multiple style={{ display:'none' }} onChange={handleFiles} />
 
-      <div style={{ border:`2px solid ${C.ink}`, borderRadius:12, background:C.paper, overflow:'hidden', boxShadow:'2px 3px 0 rgba(0,0,0,.06)' }}>
+      <div style={{ border:`4px solid ${C.ink}`, borderRadius:'var(--pc-radius-3)', background:'white', overflow:'hidden', boxShadow:`var(--pc-shadow)` }}>
         {/* Attachment previews */}
         {attachments.length > 0 && (
           <div style={{ display:'flex', gap:6, padding:'8px 10px 0', flexWrap:'wrap' }}>
@@ -1907,10 +1927,10 @@ function InputArea({ tabId, placeholder }) {
           <div style={{ display:'flex', gap:6 }}>
             {state.streaming && (
               <button onClick={() => { abortRef.current?.abort(); dispatch({ type:'SET_STREAMING', payload:false }); }}
-                style={{ background:C.red, border:'none', borderRadius:8, color:'white', padding:'6px 12px', fontSize:13, cursor:'pointer', fontWeight:600 }}>■ Stop</button>
+                style={{ background:C.red, border:`3px solid ${C.ink}`, borderRadius:'var(--pc-radius-3)', color:'white', padding:'6px 14px', fontSize:13, cursor:'pointer', fontWeight:700, boxShadow:`3px 3px 0 ${C.ink}`, fontFamily:'var(--pc-font-display)' }}>■ Stop</button>
             )}
             <button onClick={submit} disabled={(!text.trim() && !attachments.length) || state.streaming}
-              style={{ background: (text.trim() || attachments.length) && !state.streaming ? C.ink : C.faint, border:'none', borderRadius:8, color:'white', width: isMobile ? 44 : 36, height: isMobile ? 44 : 36, cursor: (text.trim() || attachments.length) && !state.streaming ? 'pointer' : 'not-allowed', fontSize: isMobile ? 20 : 16, display:'flex', alignItems:'center', justifyContent:'center', transition:'background .15s' }}>↑</button>
+              style={{ background: (text.trim() || attachments.length) && !state.streaming ? C.yellow : C.faint, border:`3px solid ${(text.trim() || attachments.length) && !state.streaming ? C.ink : C.faint}`, borderRadius:'50%', color:C.ink, width: isMobile ? 46 : 40, height: isMobile ? 46 : 40, cursor: (text.trim() || attachments.length) && !state.streaming ? 'pointer' : 'not-allowed', fontSize: isMobile ? 20 : 18, display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.1s steps(2)', fontWeight:900, boxShadow: (text.trim() || attachments.length) && !state.streaming ? `3px 3px 0 ${C.ink}` : 'none' }}>↑</button>
           </div>
         </div>
       </div>
@@ -1933,13 +1953,13 @@ function EmptyState({ tabId, title, suggestions }) {
   const shown = isMobile ? suggestions.slice(0, 4) : suggestions;
   return (
     <div className="scroll-y" style={{ flex:1, minHeight:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent: isMobile ? 'flex-start' : 'center', padding: isMobile ? '28px 14px 16px' : '32px 40px', gap: isMobile ? 16 : 24 }}>
-      <div style={{ fontSize: isMobile ? 20 : 24, fontWeight:700, color:C.ink, textAlign:'center', fontFamily:"'Kalam',cursive", maxWidth:500, lineHeight:1.3 }}>{title}</div>
+      <div style={{ fontSize: isMobile ? 22 : 28, color:C.ink, textAlign:'center', fontFamily:'var(--pc-font-display)', maxWidth:500, lineHeight:1.3, textShadow:`3px 3px 0 ${C.yellow}` }}>{title}</div>
       <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(3,1fr)', gap: isMobile ? 10 : 12, width:'100%', maxWidth: isMobile ? '100%' : 640 }}>
         {shown.map(s => (
           <button key={s} onClick={() => sendMessage({ tabId, content: s })}
-            style={{ background:'white', border:`1.5px solid #e8e5dc`, borderRadius:10, padding: isMobile ? '12px 12px' : '12px 14px', cursor:'pointer', fontSize: isMobile ? 14 : 15, textAlign:'left', color:'#555', boxShadow:'2px 2px 0 rgba(0,0,0,.04)', lineHeight:1.4 }}
-            onMouseEnter={e => { e.currentTarget.style.background=C.paper; }}
-            onMouseLeave={e => { e.currentTarget.style.background='white'; }}>
+            style={{ background:'white', border:`3px solid ${C.ink}`, borderRadius:'var(--pc-radius-3)', padding: isMobile ? '12px 12px' : '12px 14px', cursor:'pointer', fontSize: isMobile ? 14 : 15, textAlign:'left', color:C.ink, boxShadow:`3px 3px 0 ${C.ink}`, lineHeight:1.4, transition:'all 0.1s steps(2)', fontFamily:'var(--pc-font-body)' }}
+            onMouseEnter={e => { e.currentTarget.style.background=C.yellow; e.currentTarget.style.transform='translate(-2px,-2px)'; e.currentTarget.style.boxShadow=`5px 5px 0 ${C.ink}`; }}
+            onMouseLeave={e => { e.currentTarget.style.background='white'; e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow=`3px 3px 0 ${C.ink}`; }}>
             {s}
           </button>
         ))}
@@ -2105,7 +2125,7 @@ function ZyaTab() {
         <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding: isMobile ? 20 : 32, gap:16 }}>
           <div style={{ fontSize: isMobile ? 36 : 48 }}>✨</div>
           <div style={{ textAlign:'center' }}>
-            <div style={{ fontSize:22, fontWeight:700, color:C.purple, fontFamily:"'Kalam',cursive" }}>Salut Zya ! Je suis Nova.</div>
+            <div style={{ fontSize:22, fontWeight:700, color:C.purple, fontFamily:"'Permanent Marker',cursive" }}>Salut Zya ! Je suis Nova.</div>
             <div style={{ fontSize:14, color:'#888', marginTop:6 }}>{mode==='étude' ? 'Mode devoirs — je t\'aide à vraiment comprendre' : 'Mode fun — parlons de tout et de rien !'}</div>
           </div>
           <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(3,1fr)', gap:10, width:'100%', maxWidth:560 }}>
@@ -2144,7 +2164,7 @@ function ZelieTab() {
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
           <div style={{ width:40, height:40, borderRadius:'50%', background:`linear-gradient(135deg,${C.pink},${C.yellow})`, border:`2px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20 }}>🌸</div>
           <div>
-            <div style={{ fontSize:16, fontWeight:700, color:C.pink, fontFamily:"'Kalam',cursive" }}>Pixel</div>
+            <div style={{ fontSize:16, fontWeight:700, color:C.pink, fontFamily:"'Permanent Marker',cursive" }}>Pixel</div>
             <div style={{ fontSize:11, color:'#aaa' }}>ami robot de Zélie · 9 ans</div>
           </div>
         </div>
@@ -2163,7 +2183,7 @@ function ZelieTab() {
         <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding: isMobile ? 20 : 32, gap:16 }}>
           <div style={{ width: isMobile ? 72 : 100, height: isMobile ? 72 : 100, borderRadius:'50%', background:`linear-gradient(135deg,${C.pink},${C.yellow})`, border:`3px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize: isMobile ? 36 : 50, boxShadow:'4px 4px 0 rgba(0,0,0,.1)' }}>🌸</div>
           <div style={{ textAlign:'center' }}>
-            <div style={{ fontSize:26, fontWeight:700, color:C.pink, fontFamily:"'Kalam',cursive" }}>Coucou Zélie ! 🌟</div>
+            <div style={{ fontSize:26, fontWeight:700, color:C.pink, fontFamily:"'Permanent Marker',cursive" }}>Coucou Zélie ! 🌟</div>
             <div style={{ fontSize:15, color:'#888', marginTop:6 }}>{mode==='jeu' ? 'Je suis Pixel, ton ami robot ! On joue ?' : 'Mode devoirs ! On travaille ensemble ? 📚'}</div>
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:12, width:'100%', maxWidth:420 }}>
@@ -2241,7 +2261,7 @@ function FamilyTab() {
           return (
             <div key={m.id} style={{ display:'flex', justifyContent: isMe ? 'flex-end' : 'flex-start', gap:8 }}>
               {!isMe && (
-                <div style={{ width:28, height:28, borderRadius:'50%', background:profileColor(m.fromId), border:`2px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontFamily:"'Kalam',cursive", fontWeight:700, flexShrink:0, color:'white', marginTop:2 }}>
+                <div style={{ width:28, height:28, borderRadius:'50%', background:profileColor(m.fromId), border:`2px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontFamily:"'Permanent Marker',cursive", fontWeight:700, flexShrink:0, color:'white', marginTop:2 }}>
                   {m.from?.[0]?.toUpperCase() || '?'}
                 </div>
               )}
@@ -2532,12 +2552,12 @@ function CompareModal() {
   return (
     <>
       <div onClick={() => dispatch({ type:'TOGGLE_COMPARE' })} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.35)', zIndex:200 }} />
-      <div style={{ position:'fixed', top:'2%', left:'50%', transform:'translateX(-50%)', width:900, maxHeight:'96vh', background:'white', border:`2px solid ${C.ink}`, borderRadius:14, boxShadow:'6px 8px 0 rgba(0,0,0,.15)', zIndex:201, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+      <div style={{ position:'fixed', top:'2%', left:'50%', transform:'translateX(-50%)', width:900, maxHeight:'96vh', background:C.paper, border:`4px solid ${C.ink}`, borderRadius:'var(--pc-radius-3)', boxShadow:`var(--pc-shadow-lg)`, zIndex:201, display:'flex', flexDirection:'column', overflow:'hidden' }}>
 
         {/* Header */}
         <div style={{ padding:'10px 16px', borderBottom:`1.5px solid #e8e5dc`, display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <span style={{ fontSize:16, fontWeight:700 }}>⚡ Comparaison de modèles</span>
+            <span style={{ fontFamily:'var(--pc-font-display)', fontSize:20 }}>⚡ Comparaison de modèles</span>
             {fetchStatus === 'loading' && <span style={{ fontSize:11, color:'#aaa', background:'#f7f4ec', padding:'2px 8px', borderRadius:999 }}>⏳ Chargement…</span>}
             {fetchStatus === 'done' && <span style={{ fontSize:11, color:C.green, background:'#edfaed', padding:'2px 8px', borderRadius:999 }}>✓ {allModels.length} modèles</span>}
             {fetchStatus === 'error' && <span style={{ fontSize:11, color:C.red, background:'#fdf0f0', padding:'2px 8px', borderRadius:999 }}>⚠️ Liste locale</span>}
@@ -2679,7 +2699,7 @@ function ModelPicker() {
   return (
     <>
       <div onClick={() => dispatch({ type:'CLOSE_MODEL_PICKER' })} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.35)', zIndex:100 }} />
-      <div style={{ position:'fixed', top: isMobile ? '4%' : '10%', left:'50%', transform:'translateX(-50%)', width: isMobile ? 'calc(100vw - 16px)' : 620, maxHeight:'88vh', background:'white', border:`2px solid ${C.ink}`, borderRadius:14, boxShadow:'6px 8px 0 rgba(0,0,0,.15)', zIndex:101, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+      <div style={{ position:'fixed', top: isMobile ? '4%' : '10%', left:'50%', transform:'translateX(-50%)', width: isMobile ? 'calc(100vw - 16px)' : 620, maxHeight:'88vh', background:C.paper, border:`4px solid ${C.ink}`, borderRadius:'var(--pc-radius-3)', boxShadow:`var(--pc-shadow-lg)`, zIndex:101, display:'flex', flexDirection:'column', overflow:'hidden' }}>
         <div style={{ padding:'10px 14px', borderBottom:`1.5px solid #e8e5dc`, display:'flex', alignItems:'center', gap:8 }}>
           <div style={{ flex:1, display:'flex', alignItems:'center', gap:8, background:'#f7f4ec', border:`1.5px solid #e0ddd4`, borderRadius:8, padding:'7px 12px' }}>
             <span style={{ fontSize:14, color:'#aaa', flexShrink:0 }}>🔍</span>
@@ -2826,9 +2846,9 @@ function Settings() {
   return (
     <>
       <div onClick={() => dispatch({ type:'TOGGLE_SETTINGS' })} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.3)', zIndex:100 }} />
-      <div style={{ position:'fixed', top: isMobile ? '4%' : '8%', right: isMobile ? 'auto' : 24, left: isMobile ? '50%' : 'auto', transform: isMobile ? 'translateX(-50%)' : 'none', width: isMobile ? 'calc(100vw - 16px)' : 400, maxHeight: isMobile ? 'calc(92dvh - 56px - env(safe-area-inset-bottom, 0px))' : '90vh', background:'white', border:`2px solid ${C.ink}`, borderRadius:14, boxShadow:'6px 8px 0 rgba(0,0,0,.15)', zIndex:101, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+      <div style={{ position:'fixed', top: isMobile ? '4%' : '8%', right: isMobile ? 'auto' : 24, left: isMobile ? '50%' : 'auto', transform: isMobile ? 'translateX(-50%)' : 'none', width: isMobile ? 'calc(100vw - 16px)' : 420, maxHeight: isMobile ? 'calc(92dvh - 56px - env(safe-area-inset-bottom, 0px))' : '90vh', background:C.paper, border:`4px solid ${C.ink}`, borderRadius:'var(--pc-radius-3)', boxShadow:`var(--pc-shadow-lg)`, zIndex:101, display:'flex', flexDirection:'column', overflow:'hidden' }}>
         <div style={{ padding:'14px 18px', borderBottom:`1.5px solid #e8e5dc`, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-          <span style={{ fontSize:17, fontWeight:700 }}>⚙️ Réglages</span>
+          <span style={{ fontFamily:'var(--pc-font-display)', fontSize:20 }}>⚙️ Réglages</span>
           <button onClick={() => dispatch({ type:'TOGGLE_SETTINGS' })} style={{ background:'none', border:'none', cursor:'pointer', fontSize:20, color:'#888' }}>✕</button>
         </div>
         <div style={{ overflow:'auto', padding:'16px 18px', display:'flex', flexDirection:'column', gap:20 }}>
@@ -2848,7 +2868,7 @@ function Settings() {
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
               {PROFILES.map(p => (
                 <div key={p.id} style={{ display:'flex', alignItems:'center', gap:12 }}>
-                  <div style={{ width:28, height:28, borderRadius:'50%', background:p.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontFamily:"'Kalam',cursive", fontWeight:700, flexShrink:0 }}>{p.label}</div>
+                  <div style={{ width:28, height:28, borderRadius:'50%', background:p.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontFamily:"'Permanent Marker',cursive", fontWeight:700, flexShrink:0 }}>{p.label}</div>
                   <span style={{ flex:1, fontSize:15, fontWeight:500 }}>{p.name}</span>
                   <div style={{ display:'flex', alignItems:'center', gap:4 }}>
                     <span style={{ color:'#aaa', fontSize:13 }}>$</span>
@@ -2978,7 +2998,7 @@ function Settings() {
               {PROFILES.map(p => (
                 <div key={p.id}>
                   <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
-                    <div style={{ width:22, height:22, borderRadius:'50%', background:p.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontFamily:"'Kalam',cursive", fontWeight:700, flexShrink:0 }}>{p.label}</div>
+                    <div style={{ width:22, height:22, borderRadius:'50%', background:p.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontFamily:"'Permanent Marker',cursive", fontWeight:700, flexShrink:0 }}>{p.label}</div>
                     <span style={{ fontSize:13, fontWeight:500 }}>{p.name}</span>
                   </div>
                   <textarea rows={2} value={s.profileContext?.[p.id] || ''} onChange={e => setS(prev => ({ ...prev, profileContext: { ...prev.profileContext, [p.id]: e.target.value } }))}
@@ -2997,7 +3017,7 @@ function Settings() {
                 const p = getProfile(pid);
                 return (
                   <div key={pid} style={{ display:'flex', alignItems:'center', gap:12 }}>
-                    <div style={{ width:22, height:22, borderRadius:'50%', background:p?.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontFamily:"'Kalam',cursive", fontWeight:700, flexShrink:0 }}>{p?.label}</div>
+                    <div style={{ width:22, height:22, borderRadius:'50%', background:p?.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontFamily:"'Permanent Marker',cursive", fontWeight:700, flexShrink:0 }}>{p?.label}</div>
                     <span style={{ flex:1, fontSize:15 }}>{p?.name}</span>
                     <button onClick={() => setS(prev => ({ ...prev, socraticMode: { ...prev.socraticMode, [pid]: !prev.socraticMode?.[pid] } }))}
                       style={{ padding:'4px 12px', background: s.socraticMode?.[pid] ? C.purple : '#f1eee5', color: s.socraticMode?.[pid] ? 'white' : C.muted, border:`1.5px solid ${s.socraticMode?.[pid] ? C.purple : C.faint}`, borderRadius:20, fontSize:12, cursor:'pointer', fontWeight: s.socraticMode?.[pid] ? 600 : 400 }}>
@@ -3016,7 +3036,7 @@ function Settings() {
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
               {PROFILES.map(p => (
                 <div key={p.id} style={{ display:'flex', alignItems:'center', gap:12 }}>
-                  <div style={{ width:22, height:22, borderRadius:'50%', background:p.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontFamily:"'Kalam',cursive", fontWeight:700, flexShrink:0 }}>{p.label}</div>
+                  <div style={{ width:22, height:22, borderRadius:'50%', background:p.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontFamily:"'Permanent Marker',cursive", fontWeight:700, flexShrink:0 }}>{p.label}</div>
                   <span style={{ flex:1, fontSize:15, fontWeight:500 }}>{p.name}</span>
                   <input type="number" min={1} max={500} placeholder="∞"
                     value={s.dailyLimits?.[p.id] ?? ''}
@@ -3051,8 +3071,8 @@ function Settings() {
         </div>
         <div style={{ padding:'12px 18px', borderTop:`1.5px solid #e8e5dc`, display:'flex', gap:10 }}>
           <button onClick={() => dispatch({ type:'TOGGLE_SETTINGS' })} style={{ flex:1, background:'#f1eee5', border:`1.5px solid ${C.faint}`, borderRadius:8, padding:'9px 0', cursor:'pointer', fontSize:14 }}>Annuler</button>
-          <button onClick={save} style={{ flex:2, background: saved ? C.green : C.ink, border:'none', borderRadius:8, padding:'9px 0', cursor:'pointer', fontSize:14, color:'white', fontWeight:600, transition:'background .2s' }}>
-            {saved ? '✓ Enregistré' : 'Enregistrer'}
+          <button onClick={save} style={{ flex:2, background: saved ? C.green : C.yellow, border:`3px solid ${C.ink}`, borderRadius:'var(--pc-radius-3)', padding:'9px 0', cursor:'pointer', fontSize:15, color:C.ink, fontWeight:700, fontFamily:'var(--pc-font-display)', boxShadow:`3px 3px 0 ${C.ink}`, transition:'all 0.1s steps(2)' }}>
+            {saved ? '✓ Enregistré !' : 'Enregistrer'}
           </button>
         </div>
       </div>
@@ -3125,7 +3145,7 @@ function Dashboard() {
               const pct = Math.min(100, (p.spent/p.budget)*100);
               return (
                 <div key={p.id} style={{ display:'flex', alignItems:'center', gap:12, marginBottom:8 }}>
-                  <div style={{ width:28, height:28, borderRadius:'50%', background:p.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontFamily:"'Kalam',cursive", fontWeight:700, flexShrink:0 }}>{p.label}</div>
+                  <div style={{ width:28, height:28, borderRadius:'50%', background:p.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontFamily:"'Permanent Marker',cursive", fontWeight:700, flexShrink:0 }}>{p.label}</div>
                   <span style={{ width:60, fontSize:13, fontWeight:500 }}>{p.name}</span>
                   <div style={{ flex:1, height:8, background:'#f1eee5', borderRadius:999, overflow:'hidden' }}>
                     <div style={{ height:'100%', width:`${pct}%`, background: pct>80 ? C.red : p.color, borderRadius:999 }} />
@@ -3141,7 +3161,7 @@ function Dashboard() {
             <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:10, marginBottom:10 }}>
               {weekByProfile.map(p => (
                 <div key={p.id} style={{ border:`1.5px solid #e8e5dc`, borderRadius:10, padding:'10px 12px', display:'flex', alignItems:'center', gap:10 }}>
-                  <div style={{ width:28, height:28, borderRadius:'50%', background:p.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontFamily:"'Kalam',cursive", fontWeight:700, flexShrink:0 }}>{p.label}</div>
+                  <div style={{ width:28, height:28, borderRadius:'50%', background:p.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontFamily:"'Permanent Marker',cursive", fontWeight:700, flexShrink:0 }}>{p.label}</div>
                   <div>
                     <div style={{ fontSize:13, fontWeight:600 }}>{p.name}</div>
                     <div style={{ fontSize:11, color:'#aaa' }}>{p.msgs} msg · ${p.cost.toFixed(3)}</div>
@@ -3291,7 +3311,7 @@ function Layout() {
           <div style={{ display:'flex', gap:5 }}>
             {[C.red, C.yellow, C.green].map(col => <div key={col} style={{ width:11, height:11, borderRadius:'50%', background:col, border:'1px solid rgba(0,0,0,.15)' }} />)}
           </div>
-          <span style={{ fontSize:12, color:'#888', fontFamily:"'Kalam',cursive", flex:1 }}>Ricard AI</span>
+          <span style={{ fontSize:13, color:C.ink, fontFamily:'var(--pc-font-display)', flex:1, textShadow:`1px 1px 0 ${C.orange}` }}>Ricard AI</span>
           <button onClick={toggleDark} title={darkMode ? 'Mode clair' : 'Mode sombre'}
             style={{ background:'none', border:'none', cursor:'pointer', fontSize:13, color:'#999', padding:'0 4px' }}
             onMouseEnter={e => e.currentTarget.style.color = C.ink}
