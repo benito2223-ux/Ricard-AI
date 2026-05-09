@@ -137,8 +137,26 @@ const PFX_LS = 'ricard_ai_';
 const _lsGet = (k, fb=null) => { try { const v=localStorage.getItem(PFX_LS+k); return v?JSON.parse(v):fb; } catch { return fb; } };
 const _lsSet = (k, v) => { try { localStorage.setItem(PFX_LS+k, JSON.stringify(v)); } catch {} };
 
+// ══════════════════════════════════════════════════════════════
+// ⚙️  CONFIGURATION DÉVELOPPEUR — à remplir une fois, re-déployer
+// Tous les appareils de la famille se configurent automatiquement.
+// Laisser null → configuration manuelle via Réglages.
+// ══════════════════════════════════════════════════════════════
+const FIREBASE_CONFIG = null;
+// Exemple : { apiKey:"AIzaSy...", authDomain:"xxx.firebaseapp.com",
+//             projectId:"xxx", storageBucket:"xxx.appspot.com",
+//             messagingSenderId:"123456", appId:"1:123:web:abc" }
+
+const FAMILY_ID_HARDCODED = null;
+// Exemple : "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+// Génère un UUID sur https://www.uuidgenerator.net/
+
 // ── Family ID (partagé entre appareils) ───────────────────────
 function getFamilyId() {
+  if (FAMILY_ID_HARDCODED) {
+    localStorage.setItem('ricard_familyId', FAMILY_ID_HARDCODED);
+    return FAMILY_ID_HARDCODED;
+  }
   let id = localStorage.getItem('ricard_familyId');
   if (!id) { id = ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16)); localStorage.setItem('ricard_familyId', id); }
   return id;
@@ -202,8 +220,14 @@ function initFirebase(cfg) {
   }
 }
 
-// Auto-init au démarrage
-(function() { const c = loadFbConfig(); if (c) initFirebase(c); })();
+// Auto-init au démarrage (FIREBASE_CONFIG hardcodé > config sauvegardée)
+(function() {
+  const cfg = FIREBASE_CONFIG || loadFbConfig();
+  if (cfg) {
+    initFirebase(cfg);
+    if (FIREBASE_CONFIG) saveFbConfig(FIREBASE_CONFIG); // persiste pour les Réglages
+  }
+})();
 
 // ── Firestore save / load ─────────────────────────────────────
 const _saveTimers = {};
@@ -302,7 +326,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.13';
+const APP_VERSION = '1.14';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -618,14 +642,25 @@ function loadSettings() {
   const s = lsGet('settings', {});
   // Double sécurité : clé API sauvegardée aussi séparément
   const apiKey = s.apiKey || lsGet('apikey_backup', '') || '';
+  // Migration : adminPin → profileCodes parents (rétro-compatibilité v1.13→v1.14)
+  const legacyPin = s.adminPin ?? '';
+  const profileCodes = s.profileCodes ?? {
+    papa:  legacyPin,
+    maman: legacyPin,
+    zya:   '',
+    zelie: '',
+  };
   return {
     apiKey,
-    budgets:       s.budgets       ?? { papa:50, maman:50, zya:5, zelie:5 },
-    adminPin:      s.adminPin      ?? '',
-    defaultModels: s.defaultModels ?? { ...DEFAULT_MODELS_PER_TAB },
-    profileContext: s.profileContext ?? { papa:'', maman:'', zya:'', zelie:'' },
-    socraticMode:   s.socraticMode  ?? { zya:false, zelie:false },
-    dailyLimits:    s.dailyLimits   ?? { papa:null, maman:null, zya:30, zelie:20 },
+    budgets:         s.budgets         ?? { papa:50, maman:50, zya:5, zelie:5 },
+    adminPin:        legacyPin,          // conservé pour rétro-compat
+    profileCodes,
+    appCode:         s.appCode         ?? '',
+    autoLockMinutes: s.autoLockMinutes ?? 0,
+    defaultModels:   s.defaultModels   ?? { ...DEFAULT_MODELS_PER_TAB },
+    profileContext:  s.profileContext  ?? { papa:'', maman:'', zya:'', zelie:'' },
+    socraticMode:    s.socraticMode    ?? { zya:false, zelie:false },
+    dailyLimits:     s.dailyLimits     ?? { papa:null, maman:null, zya:30, zelie:20 },
   };
 }
 function dateKey() { const d = new Date(); return `${d.getFullYear()}_${d.getMonth()+1}_${d.getDate()}`; }
@@ -962,6 +997,8 @@ function reducer(state, action) {
     case 'SHOW_PIN_ENTRY': return { ...state, showPinEntry: true, pendingProfile: action.payload };
     case 'HIDE_PIN_ENTRY': return { ...state, showPinEntry: false, pendingProfile: null };
     case 'CONFIRM_PROFILE': return { ...buildState(action.payload), showPinEntry: false, pendingProfile: null };
+    case 'SHOW_FAMILY_GATE': return { ...state, showFamilyGate: true };
+    case 'HIDE_FAMILY_GATE': return { ...state, showFamilyGate: false };
     case 'OPEN_ARTIFACT': return { ...state, artifact: action.payload, showArtifact: true };
     case 'CLOSE_ARTIFACT': return { ...state, showArtifact: false };
     case 'TOGGLE_ARTIFACT': return { ...state, showArtifact: !state.showArtifact };
@@ -1080,15 +1117,20 @@ const Ctx = createContext(null);
 function useApp() { return useContext(Ctx); }
 
 function AppProvider({ children }) {
-  const [state, dispatch] = useReducer(reducer, null, () => ({
-    profile: null, tab: 'chat', tabs: {},
-    settings: loadSettings(), monthCost: 0,
-    streaming: false,
-    showModelPicker: false, showSettings: false, showDashboard: false,
-    showPinEntry: false, pendingProfile: null,
-    artifact: null, showArtifact: false,
-    showSearch: false, showCompare: false,
-  }));
+  const [state, dispatch] = useReducer(reducer, null, () => {
+    const settings = loadSettings();
+    const needsGate = !!(settings.appCode && !localStorage.getItem('ricard_device_auth'));
+    return {
+      profile: null, tab: 'chat', tabs: {},
+      settings, monthCost: 0,
+      streaming: false,
+      showModelPicker: false, showSettings: false, showDashboard: false,
+      showPinEntry: false, pendingProfile: null,
+      artifact: null, showArtifact: false,
+      showSearch: false, showCompare: false,
+      showFamilyGate: needsGate,
+    };
+  });
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -1129,6 +1171,18 @@ function AppProvider({ children }) {
 
   // Persist settings
   useEffect(() => { saveSettings(state.settings); }, [state.settings]);
+
+  // Auto-lock sur inactivité
+  useEffect(() => {
+    const mins = state.settings.autoLockMinutes;
+    if (!state.profile || !mins) return;
+    const ms = mins * 60 * 1000;
+    let timer = setTimeout(() => dispatch({ type:'SET_PROFILE', payload:null }), ms);
+    const reset = () => { clearTimeout(timer); timer = setTimeout(() => dispatch({ type:'SET_PROFILE', payload:null }), ms); };
+    const evts = ['mousedown','mousemove','keydown','touchstart','scroll'];
+    evts.forEach(ev => window.addEventListener(ev, reset, { passive:true }));
+    return () => { clearTimeout(timer); evts.forEach(ev => window.removeEventListener(ev, reset)); };
+  }, [state.profile, state.settings.autoLockMinutes]);
 
   const sendMessage = useCallback(async ({ tabId, content, attachments = [], abortRef }) => {
     const t = tabId || state.tab;
@@ -1330,6 +1384,88 @@ function MsgContent({ content, onOpenArtifact }) {
     : <TextBlock key={i} text={p.content} />)}</div>;
 }
 
+// ─── Family Gate ─────────────────────────────────────────────
+// Portail plein écran au lancement — vérifie le code famille
+// autorise l'appareil dans localStorage une fois validé
+function FamilyGate() {
+  const { state, dispatch } = useApp();
+  const [entered, setEntered] = useState('');
+  const [shake, setShake]   = useState(false);
+  const [hint, setHint]     = useState(false);
+
+  if (!state.showFamilyGate) return null;
+
+  const handleDigit = (d) => {
+    if (entered.length >= 4) return;
+    const next = entered + d;
+    setEntered(next);
+    if (next.length === 4) {
+      if (next === state.settings.appCode) {
+        localStorage.setItem('ricard_device_auth', '1');
+        dispatch({ type:'HIDE_FAMILY_GATE' });
+      } else {
+        setShake(true);
+        setTimeout(() => { setEntered(''); setShake(false); }, 700);
+      }
+    }
+  };
+
+  const DIGITS = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
+
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:500, background:C.ink, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:24 }}>
+      {/* Doodle déco */}
+      <div style={{ position:'absolute', top:24, left:24, fontSize:48, opacity:.08, transform:'rotate(-15deg)', userSelect:'none' }}>🔒</div>
+      <div style={{ position:'absolute', bottom:32, right:28, fontSize:64, opacity:.06, transform:'rotate(10deg)', userSelect:'none' }}>★</div>
+
+      <div style={{ maxWidth:340, width:'100%', textAlign:'center' }}>
+        {/* Titre punk */}
+        <div style={{ fontFamily:'var(--pc-font-display)', fontSize:48, color:C.yellow, textShadow:`4px 4px 0 ${C.orange}`, lineHeight:1.1, marginBottom:8 }}>Ricard AI</div>
+        <div style={{ fontFamily:'var(--pc-font-body)', fontSize:15, color:'#888', marginBottom:32 }}>Code famille requis pour accéder 🔑</div>
+
+        {/* Carte code */}
+        <div style={{ background:C.paper, border:`4px solid ${C.yellow}`, borderRadius:'var(--pc-radius-1)', padding:'28px 24px', boxShadow:`8px 8px 0 ${C.orange}` }}>
+          {/* Dots */}
+          <div style={{ display:'flex', justifyContent:'center', gap:16, marginBottom:28, animation: shake ? 'shakePin .6s ease' : 'none' }}>
+            {[0,1,2,3].map(i => (
+              <div key={i} style={{ width:18, height:18, borderRadius:'50%', background: shake ? C.red : (i < entered.length ? C.ink : C.shade), border:`2px solid ${shake ? C.red : (i < entered.length ? C.ink : C.faint)}`, transition:'background .15s' }} />
+            ))}
+          </div>
+
+          {/* Numpad */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
+            {DIGITS.map((d, i) => (
+              <button key={i}
+                onClick={d === '⌫' ? () => setEntered(p => p.slice(0,-1)) : d ? () => handleDigit(d) : undefined}
+                disabled={!d}
+                style={{ padding:'16px 0', fontSize: d === '⌫' ? 18 : 22, fontWeight:700, background: d === '⌫' ? C.shade : 'white', border:`2px solid ${C.ink}`, borderRadius:10, cursor: d ? 'pointer' : 'default', opacity: d ? 1 : 0, color:C.ink, fontFamily:'var(--pc-font-body)', boxShadow: d ? `3px 3px 0 ${C.ink}` : 'none', transition:'all 0.1s steps(2)', WebkitTapHighlightColor:'transparent' }}
+                onMouseEnter={e => { if(d) { e.currentTarget.style.background=C.yellow; e.currentTarget.style.transform='translate(-2px,-2px)'; e.currentTarget.style.boxShadow=`5px 5px 0 ${C.ink}`; }}}
+                onMouseLeave={e => { e.currentTarget.style.background = d === '⌫' ? C.shade : 'white'; e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow=d?`3px 3px 0 ${C.ink}`:'none'; }}>
+                {d}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Lien d'aide */}
+        <button onClick={() => setHint(v => !v)} style={{ marginTop:20, background:'none', border:'none', color:'#555', fontSize:12, cursor:'pointer', fontFamily:'var(--pc-font-body)' }}>
+          {hint ? '▾' : '▸'} Je ne connais pas le code
+        </button>
+        {hint && (
+          <div style={{ marginTop:8, padding:'10px 14px', background:'#1a1a1a', border:`1px solid #333`, borderRadius:8, fontSize:12, color:'#777', fontFamily:'var(--pc-font-body)', textAlign:'left', lineHeight:1.6 }}>
+            Le code famille est défini par un parent dans :<br/>
+            <span style={{ color:C.yellow }}>Réglages → 🔐 Sécurité → Code portail famille</span><br/>
+            Ce code autorise cet appareil une seule fois.
+          </div>
+        )}
+      </div>
+
+      <div style={{ position:'absolute', bottom:16, fontFamily:'var(--pc-font-body)', fontSize:11, color:'#333' }}>Ricard AI v{APP_VERSION}</div>
+      <style>{`@keyframes shakePin { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-8px)} 40%{transform:translateX(8px)} 60%{transform:translateX(-6px)} 80%{transform:translateX(6px)} }`}</style>
+    </div>
+  );
+}
+
 // ─── PIN Entry ───────────────────────────────────────────────
 function PinEntry() {
   const { state, dispatch } = useApp();
@@ -1347,8 +1483,12 @@ function PinEntry() {
     const next = entered + d;
     setEntered(next);
     if (next.length === 4) {
-      if (next === state.settings.adminPin) {
-        dispatch({ type:'CONFIRM_PROFILE', payload: state.pendingProfile });
+      const pid = state.pendingProfile;
+      const codes = state.settings.profileCodes || {};
+      // profileCodes[pid] en priorité, sinon adminPin (rétro-compat)
+      const correctCode = codes[pid] || state.settings.adminPin || '';
+      if (correctCode && next === correctCode) {
+        dispatch({ type:'CONFIRM_PROFILE', payload: pid });
       } else {
         setShake(true);
         setTimeout(() => { setEntered(''); setShake(false); }, 700);
@@ -1422,8 +1562,9 @@ function ProfileSelector() {
           const pct = Math.min(100, (spent / budget) * 100);
           return (
             <button key={p.id} onClick={() => {
-              const pin = state.settings.adminPin;
-              if (p.admin && pin) {
+              const codes = state.settings.profileCodes || {};
+              const code = codes[p.id] || (p.admin ? state.settings.adminPin : '');
+              if (code) {
                 dispatch({ type:'SHOW_PIN_ENTRY', payload:p.id });
               } else {
                 dispatch({ type:'SET_PROFILE', payload:p.id });
@@ -1433,9 +1574,11 @@ function ProfileSelector() {
               onMouseEnter={e => { e.currentTarget.style.transform='translate(-4px,-4px)'; e.currentTarget.style.boxShadow='var(--pc-shadow-hover)'; e.currentTarget.style.background=C.yellow; }}
               onMouseLeave={e => { e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow='var(--pc-shadow)'; e.currentTarget.style.background='white'; }}
             >
-              {p.admin && state.settings.adminPin && (
-                <div style={{ position:'absolute', top:10, right:10, fontSize:14 }}>🔒</div>
-              )}
+              {(() => {
+                const codes = state.settings.profileCodes || {};
+                const hasCode = codes[p.id] || (p.admin && state.settings.adminPin);
+                return hasCode ? <div style={{ position:'absolute', top:10, right:10, fontSize:14 }}>🔒</div> : null;
+              })()}
               <div style={{ width:72, height:72, borderRadius:'50%', background:p.color, border:`2px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:30, fontFamily:"'Permanent Marker',cursive", fontWeight:700 }}>
                 {p.label}
               </div>
@@ -2880,21 +3023,76 @@ function Settings() {
               ))}
             </div>
           </section>
+          {/* ── 🔐 Sécurité ─────────────────────────────────── */}
           <section>
-            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:8 }}>Code PIN — Profils adultes</div>
-            <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-              <input type="password" inputMode="numeric" maxLength={4} value={s.adminPin || ''}
-                onChange={e => setS(p => ({ ...p, adminPin: e.target.value.replace(/\D/g,'').slice(0,4) }))}
-                placeholder="Laisser vide = aucun PIN"
-                style={{ flex:1, padding:'8px 12px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:18, textAlign:'center', letterSpacing:6, outline:'none', background:C.paper }} />
-              {s.adminPin && (
-                <button onClick={() => setS(p => ({ ...p, adminPin:'' }))}
-                  style={{ background:'#f1eee5', border:`1.5px solid ${C.faint}`, borderRadius:8, padding:'8px 12px', cursor:'pointer', fontSize:13, flexShrink:0 }}>Supprimer</button>
-              )}
+            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:14 }}>🔐 Sécurité</div>
+
+            {/* Code portail famille */}
+            <div style={{ marginBottom:16 }}>
+              <div style={{ fontSize:12, fontWeight:600, color:C.ink, marginBottom:6 }}>Code portail famille</div>
+              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                <input type="password" inputMode="numeric" maxLength={4} value={s.appCode || ''}
+                  onChange={e => {
+                    const v = e.target.value.replace(/\D/g,'').slice(0,4);
+                    setS(p => ({ ...p, appCode: v }));
+                    // Invalider l'autorisation appareils si le code change
+                    if (v !== s.appCode) localStorage.removeItem('ricard_device_auth');
+                  }}
+                  placeholder="4 chiffres — vide = désactivé"
+                  style={{ flex:1, padding:'8px 12px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:18, textAlign:'center', letterSpacing:6, outline:'none', background:C.paper }} />
+                {s.appCode && (
+                  <button onClick={() => { setS(p => ({ ...p, appCode:'' })); localStorage.removeItem('ricard_device_auth'); }}
+                    style={{ background:'#f1eee5', border:`1.5px solid ${C.faint}`, borderRadius:8, padding:'8px 12px', cursor:'pointer', fontSize:13, flexShrink:0 }}>✕</button>
+                )}
+              </div>
+              <p style={{ fontSize:11, color:'#aaa', margin:'5px 0 0' }}>
+                S'affiche au lancement sur chaque nouvel appareil. Une fois entré, l'appareil est autorisé définitivement.
+              </p>
             </div>
-            <p style={{ fontSize:12, color:'#aaa', margin:'6px 0 0' }}>
-              🔒 4 chiffres. Protège Papa & Maman — les enfants ne peuvent pas y accéder.
-            </p>
+
+            {/* Codes par profil */}
+            <div style={{ marginBottom:16 }}>
+              <div style={{ fontSize:12, fontWeight:600, color:C.ink, marginBottom:8 }}>Code PIN par profil <span style={{ fontWeight:400, color:'#aaa' }}>(vide = accès libre)</span></div>
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {PROFILES.map(p => (
+                  <div key={p.id} style={{ display:'flex', alignItems:'center', gap:10 }}>
+                    <div style={{ width:26, height:26, borderRadius:'50%', background:p.color, border:`1.5px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontFamily:"'Permanent Marker',cursive", fontWeight:700, flexShrink:0 }}>{p.label}</div>
+                    <span style={{ flex:1, fontSize:14, fontWeight:500 }}>{p.name}</span>
+                    <input type="password" inputMode="numeric" maxLength={4}
+                      value={s.profileCodes?.[p.id] || ''}
+                      onChange={e => {
+                        const v = e.target.value.replace(/\D/g,'').slice(0,4);
+                        setS(prev => ({ ...prev, profileCodes: { ...prev.profileCodes, [p.id]: v } }));
+                      }}
+                      placeholder="——"
+                      style={{ width:72, padding:'6px 10px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:16, textAlign:'center', letterSpacing:4, outline:'none', background:C.paper }} />
+                  </div>
+                ))}
+              </div>
+              <p style={{ fontSize:11, color:'#aaa', margin:'6px 0 0' }}>
+                Parents : accèdent à tous les profils. Filles : seulement au leur. 🔒
+              </p>
+            </div>
+
+            {/* Auto-lock */}
+            <div>
+              <div style={{ fontSize:12, fontWeight:600, color:C.ink, marginBottom:6 }}>Verrouillage automatique</div>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <select value={s.autoLockMinutes ?? 0}
+                  onChange={e => setS(p => ({ ...p, autoLockMinutes: Number(e.target.value) }))}
+                  style={{ flex:1, padding:'8px 10px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:14, outline:'none', background:C.paper, cursor:'pointer' }}>
+                  <option value={0}>Désactivé</option>
+                  <option value={5}>5 minutes</option>
+                  <option value={10}>10 minutes</option>
+                  <option value={20}>20 minutes</option>
+                  <option value={30}>30 minutes</option>
+                  <option value={60}>1 heure</option>
+                </select>
+              </div>
+              <p style={{ fontSize:11, color:'#aaa', margin:'5px 0 0' }}>
+                Retour à l'écran profils après inactivité. Nécessite un PIN si configuré.
+              </p>
+            </div>
           </section>
 
           {/* ── Modèles par défaut ──────────────────────── */}
@@ -3414,6 +3612,8 @@ class ErrorBoundary extends React.Component {
 // ─── Root ─────────────────────────────────────────────────────
 function App() {
   const { state } = useApp();
+  // Portail famille en premier — bloque tout le reste
+  if (state.showFamilyGate) return <FamilyGate />;
   return (
     <>
       {state.profile ? <Layout /> : <ProfileSelector />}
