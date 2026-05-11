@@ -245,6 +245,37 @@ async function cloudSave(pid, tab, convs) {
     });
   } catch(e) { console.warn('[Firebase] save:', e.message); }
 }
+// ─── Sync clé API via Firebase ───────────────────────────────
+async function cloudSaveApiKey(apiKey) {
+  if (!CLOUD.enabled || !apiKey) return;
+  try {
+    await CLOUD.db.collection('ricard_config').doc(getFamilyId()).set(
+      { apiKey, updatedAt: new Date().toISOString() },
+      { merge: true }
+    );
+    console.log('[Firebase] 🔑 clé API sauvegardée');
+  } catch(e) { console.warn('[Firebase] apiKey save:', e.message); }
+}
+
+function cloudWatchApiKey(callback) {
+  if (!CLOUD.enabled) return () => {};
+  try {
+    const unsub = CLOUD.db
+      .collection('ricard_config')
+      .doc(getFamilyId())
+      .onSnapshot(doc => {
+        if (doc.exists) {
+          const key = doc.data()?.apiKey;
+          if (key) callback(key);
+        }
+      }, err => console.warn('[Firebase] apiKey watch:', err.message));
+    return unsub;
+  } catch(e) {
+    console.warn('[Firebase] cloudWatchApiKey:', e.message);
+    return () => {};
+  }
+}
+
 async function cloudLoadAll(pid) {
   if (!CLOUD.enabled) return null;
   const tabs = ['chat','code','design','zya','zelie'];
@@ -1306,8 +1337,44 @@ function AppProvider({ children }) {
     return () => { cancelled = true; };
   }, [state.profile]);
 
-  // Persist settings
-  useEffect(() => { saveSettings(state.settings); }, [state.settings]);
+  // Refs pour éviter les boucles de sync clé API
+  const apiKeyRef       = useRef(state.settings.apiKey); // clé courante
+  const lastPushedKey   = useRef(state.settings.apiKey); // dernière clé envoyée à Firebase
+  useEffect(() => { apiKeyRef.current = state.settings.apiKey; }, [state.settings.apiKey]);
+
+  // Persist settings + push clé API vers Firebase si elle change
+  useEffect(() => {
+    saveSettings(state.settings);
+    const key = state.settings.apiKey;
+    if (key && key !== lastPushedKey.current) {
+      lastPushedKey.current = key;
+      cloudSaveApiKey(key);
+    }
+  }, [state.settings]);
+
+  // 🔑 Écoute Firebase — synchronise la clé API sur tous les appareils famille
+  useEffect(() => {
+    const unsub = cloudWatchApiKey(remoteKey => {
+      if (!remoteKey || remoteKey === apiKeyRef.current) return; // déjà à jour
+      const hadKey = !!apiKeyRef.current;
+      // Met à jour les refs AVANT dispatch pour stopper la boucle push
+      apiKeyRef.current     = remoteKey;
+      lastPushedKey.current = remoteKey;
+      // Sauvegarde locale
+      lsSet('apikey_backup', remoteKey);
+      // Applique dans le state React
+      dispatch({ type:'SET_SETTINGS', payload:{ ...loadSettings(), apiKey: remoteKey } });
+      // Toast seulement si l'appareil n'avait pas de clé (premier setup)
+      if (!hadKey) {
+        dispatch({ type:'SHOW_TOAST', payload:{
+          message: '🔑 Clé API synchronisée depuis le cloud famille !',
+          type: 'info', duration: 6000,
+        }});
+      }
+      console.log('[Firebase] 🔑 clé API reçue du cloud');
+    });
+    return unsub; // cleanup au démontage
+  }, []); // mount une seule fois — le snapshot reste actif
 
   // Toast milestone streak à la connexion
   useEffect(() => {
@@ -3770,14 +3837,23 @@ function Settings() {
         </div>
         <div style={{ overflow:'auto', padding:'16px 18px', display:'flex', flexDirection:'column', gap:20 }}>
           <section>
-            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:8 }}>Clé API OpenRouter</div>
+            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:8, display:'flex', alignItems:'center', gap:8 }}>
+              Clé API OpenRouter
+              {CLOUD.enabled && (
+                <span title="Synchronisée sur tous les appareils famille via Firebase"
+                  style={{ fontSize:11, background:'#e8f5e9', color:C.green, borderRadius:4, padding:'1px 6px', fontWeight:600, display:'flex', alignItems:'center', gap:3 }}>
+                  ☁️ sync famille
+                </span>
+              )}
+            </div>
             <div style={{ display:'flex', gap:8 }}>
               <input type={showKey ? 'text' : 'password'} value={s.apiKey || ''} onChange={e => { const k = e.target.value; setS(p => ({ ...p, apiKey:k })); if (k) { lsSet('apikey_backup', k); } }} placeholder="sk-or-v1-…"
-                style={{ flex:1, padding:'9px 13px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:15, fontFamily:'monospace', outline:'none', background:C.paper }} />
+                style={{ flex:1, padding:'9px 13px', border:`1.5px solid ${CLOUD.enabled ? C.green : C.faint}`, borderRadius:8, fontSize:15, fontFamily:'monospace', outline:'none', background:C.paper }} />
               <button onClick={() => setShowKey(v => !v)} style={{ background:'#f1eee5', border:`1.5px solid ${C.faint}`, borderRadius:8, padding:'0 12px', cursor:'pointer', fontSize:14 }}>{showKey ? '🙈' : '👁️'}</button>
             </div>
             <p style={{ fontSize:12, color:'#aaa', margin:'6px 0 0' }}>
               Obtenez votre clé sur <a href="https://openrouter.ai/keys" target="_blank" rel="noopener" style={{ color:C.blue }}>openrouter.ai/keys</a>
+              {CLOUD.enabled && <span style={{ color:C.green }}> · Partagée automatiquement avec tous les appareils de la famille 🔑</span>}
             </p>
           </section>
           {/* ── 🎨 Illustrations ──────────────────────────── */}
