@@ -450,7 +450,8 @@ async function fetchAllModels() {
           ? m.context_length >= 1e6 ? `${Math.round(m.context_length/1e6)}M`
           : `${Math.round(m.context_length/1000)}k`
           : '?',
-        vision: (m.architecture?.modality || '').includes('image'),
+        vision: (m.architecture?.modality || '').split('->')[0]?.includes('image') ?? false,
+        imageGen: ((m.architecture?.modality || '').split('->')[1] || '').toLowerCase().includes('image'),
         speed: 2,
       }));
     mapped.forEach(m => { _modelCache[m.id] = m; });
@@ -2077,6 +2078,160 @@ function ChatHeader({ tabId, title, icon, accentColor }) {
   );
 }
 
+// ─── Image Model Picker Modal ─────────────────────────────────
+function ImageModelPickerModal({ current, onSelect, onClose }) {
+  const [tab, setTab]       = useState('featured');   // 'featured' | 'catalog'
+  const [search, setSearch] = useState('');
+  const [liveModels, setLiveModels] = useState(() => Array.isArray(_liveModelsCache) ? _liveModelsCache : null);
+  const [loading, setLoading]       = useState(false);
+  const [customId, setCustomId]     = useState('');
+  const isMobile = useIsMobile();
+  const searchRef = useRef(null);
+
+  // Focus auto
+  useEffect(() => { setTimeout(() => searchRef.current?.focus(), 80); }, []);
+  // Escape key
+  useEffect(() => {
+    const h = e => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  // Fetch catalogue si pas encore chargé
+  useEffect(() => {
+    if (tab === 'catalog' && !liveModels && !loading) {
+      setLoading(true);
+      fetchAllModels().then(m => { if (m) setLiveModels(m); setLoading(false); });
+    }
+  }, [tab]);
+
+  // ── Onglet Recommandés ──
+  const featuredFiltered = IMAGE_MODELS.filter(m => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return m.name.toLowerCase().includes(q) || m.by.toLowerCase().includes(q) || m.id.toLowerCase().includes(q);
+  });
+
+  // ── Onglet Catalogue ──
+  const catalogFiltered = (liveModels || []).filter(m => {
+    // Garde les modèles image-gen détectés + ceux qui matchent des mots-clés connus
+    const isImgModel = m.imageGen ||
+      /dall|flux|stable.?diff|sdxl|midjourney|imagen|firefly|kandinsky|playground|leonardo|wuerstchen/i.test(m.id);
+    if (!isImgModel) return false;
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return m.name.toLowerCase().includes(q) || (m.provider||'').toLowerCase().includes(q) || m.id.toLowerCase().includes(q);
+  }).sort((a, b) => (a.inCost ?? 0) - (b.inCost ?? 0));
+
+  const TabBtn = ({ id, label, count }) => (
+    <button onClick={() => setTab(id)}
+      style={{ flex:1, padding:'8px 4px', border:'none', borderBottom: tab===id ? `3px solid #7c3aed` : `3px solid transparent`, background:'none', cursor:'pointer', fontFamily:'var(--pc-font-body)', fontSize:13, fontWeight: tab===id ? 700 : 400, color: tab===id ? '#7c3aed' : '#888', transition:'all .15s' }}>
+      {label}{count != null ? <span style={{ marginLeft:5, fontSize:11, color:'#aaa' }}>({count})</span> : null}
+    </button>
+  );
+
+  const ModelRow = ({ m, isFeatured }) => {
+    const isActive = (current || 'openai/dall-e-3') === m.id;
+    return (
+      <button onClick={() => { onSelect(m.id); onClose(); }}
+        style={{ width:'100%', textAlign:'left', padding:'10px 14px', border:'none', borderBottom:`1px solid #e8e5dc`, background: isActive ? '#f3e8ff' : 'white', cursor:'pointer', display:'flex', alignItems:'center', gap:10, transition:'background .1s' }}
+        onMouseEnter={e => { if (!isActive) e.currentTarget.style.background='#faf7f2'; }}
+        onMouseLeave={e => { if (!isActive) e.currentTarget.style.background='white'; }}>
+        {/* Indicateur actif */}
+        <span style={{ fontSize:14, flexShrink:0, opacity: isActive ? 1 : 0 }}>✓</span>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontSize:14, fontWeight:600, color:C.ink, display:'flex', alignItems:'center', gap:6 }}>
+            <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+              {isFeatured ? m.name : (m.name || m.id)}
+            </span>
+            {isActive && <span style={{ fontSize:10, background:'#7c3aed', color:'white', borderRadius:4, padding:'1px 5px', flexShrink:0 }}>actif</span>}
+          </div>
+          <div style={{ fontSize:11, color:'#aaa', marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+            {isFeatured ? `${m.by} · ${m.size}` : `${m.provider || m.id.split('/')[0]}`}
+          </div>
+        </div>
+        {/* Prix */}
+        <div style={{ textAlign:'right', flexShrink:0 }}>
+          {isFeatured ? null : (
+            m.inCost === 0
+              ? <span style={{ fontSize:11, color:C.green, fontWeight:700 }}>Gratuit</span>
+              : m.inCost ? <span style={{ fontSize:11, color:'#888' }}>${m.inCost.toFixed(3)}/M</span> : null
+          )}
+        </div>
+      </button>
+    );
+  };
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.4)', zIndex:200 }} />
+      <div style={{ position:'fixed', top: isMobile ? '4%' : '8%', left:'50%', transform:'translateX(-50%)', width: isMobile ? 'calc(100vw - 16px)' : 540, maxHeight: isMobile ? 'calc(90dvh)' : '88vh', background:C.paper, border:`4px solid #7c3aed`, borderRadius:'var(--pc-radius-3)', boxShadow:`6px 6px 0 #7c3aed`, zIndex:201, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+        {/* Header */}
+        <div style={{ padding:'12px 16px', borderBottom:`1.5px solid #e8e5dc`, display:'flex', alignItems:'center', gap:10 }}>
+          <span style={{ fontSize:20 }}>🎨</span>
+          <span style={{ fontFamily:'var(--pc-font-display)', fontSize:18, flex:1 }}>Modèle d'illustration</span>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', fontSize:20, color:'#888', lineHeight:1 }}>✕</button>
+        </div>
+
+        {/* Search */}
+        <div style={{ padding:'10px 14px', borderBottom:`1px solid #e8e5dc` }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8, background:'#f7f4ec', border:`1.5px solid #e0ddd4`, borderRadius:8, padding:'7px 12px' }}>
+            <span style={{ fontSize:14, color:'#aaa' }}>🔍</span>
+            <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="dall-e, flux, sdxl, stable…"
+              style={{ flex:1, border:'none', outline:'none', fontSize:14, background:'transparent', color:C.ink }} />
+            {search && <button onClick={() => setSearch('')} style={{ background:'none', border:'none', cursor:'pointer', fontSize:14, color:'#aaa', padding:0 }}>✕</button>}
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display:'flex', borderBottom:`1.5px solid #e8e5dc`, background:'white' }}>
+          <TabBtn id="featured" label="⭐ Recommandés" count={IMAGE_MODELS.length} />
+          <TabBtn id="catalog"  label="🌐 Catalogue OpenRouter" count={tab==='catalog' && !loading ? catalogFiltered.length : null} />
+        </div>
+
+        {/* Liste */}
+        <div className="scroll-y" style={{ flex:1, minHeight:0, overflowY:'auto' }}>
+          {tab === 'featured' ? (
+            featuredFiltered.length ? (
+              featuredFiltered.map(m => <ModelRow key={m.id} m={m} isFeatured={true} />)
+            ) : (
+              <div style={{ padding:24, textAlign:'center', color:'#aaa', fontSize:14 }}>Aucun résultat</div>
+            )
+          ) : loading ? (
+            <div style={{ padding:24, textAlign:'center', color:'#888', fontSize:14 }}>
+              <span className="streaming-dot" style={{ width:8, height:8, marginRight:8 }} />
+              Chargement du catalogue OpenRouter…
+            </div>
+          ) : catalogFiltered.length ? (
+            catalogFiltered.map(m => <ModelRow key={m.id} m={m} isFeatured={false} />)
+          ) : (
+            <div style={{ padding:24, textAlign:'center', color:'#aaa', fontSize:14 }}>
+              {liveModels ? 'Aucun modèle image trouvé' : 'Erreur de chargement'}
+            </div>
+          )}
+        </div>
+
+        {/* ID personnalisé */}
+        <div style={{ padding:'10px 14px', borderTop:`1.5px solid #e8e5dc`, background:'white' }}>
+          <div style={{ fontSize:11, color:'#aaa', marginBottom:5 }}>Ou colle directement un ID OpenRouter :</div>
+          <div style={{ display:'flex', gap:6 }}>
+            <input value={customId} onChange={e => setCustomId(e.target.value)}
+              placeholder="ex: black-forest-labs/flux-1.1-pro-ultra"
+              style={{ flex:1, padding:'6px 10px', border:`1.5px solid ${customId ? '#7c3aed' : C.faint}`, borderRadius:8, fontSize:13, outline:'none', fontFamily:'monospace', background:C.paper }} />
+            <button
+              disabled={!customId.trim() || !customId.includes('/')}
+              onClick={() => { if (customId.trim().includes('/')) { onSelect(customId.trim()); onClose(); } }}
+              style={{ background: customId.includes('/') ? '#7c3aed' : C.faint, border:'none', borderRadius:8, color:'white', padding:'6px 14px', fontSize:13, cursor: customId.includes('/') ? 'pointer' : 'not-allowed', fontWeight:700, fontFamily:'var(--pc-font-display)' }}>
+              OK
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── Image Message Content ────────────────────────────────────
 function ImageMsgContent({ msg }) {
   const isMobile = useIsMobile();
@@ -2285,6 +2440,7 @@ function InputArea({ tabId, placeholder }) {
   const [attachments, setAttachments] = useState([]);
   const [imageMode, setImageMode] = useState(false);
   const [imgGenerating, setImgGenerating] = useState(false);
+  const [showImgPicker, setShowImgPicker] = useState(false);
   const taRef = useRef(null);
   const abortRef = useRef(null);
   const fileRef = useRef(null);
@@ -2474,16 +2630,29 @@ function InputArea({ tabId, placeholder }) {
             )}
             {/* Sélecteur modèle — texte ou image */}
             {imageMode ? (
-              <select
-                value={state.settings.defaultImageModel || 'openai/dall-e-3'}
-                onChange={e => {
-                  const val = e.target.value;
-                  dispatch({ type:'SET_SETTINGS', payload:{ ...state.settings, defaultImageModel:val } });
-                  saveSettings({ ...state.settings, defaultImageModel:val });
-                }}
-                style={{ background:'#f1eee5', border:`1px solid ${C.faint}`, borderRadius:20, padding:'4px 10px', fontSize:12, cursor:'pointer', color:'#555', outline:'none', maxWidth: isMobile ? 130 : 180 }}>
-                {IMAGE_MODELS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
+              <>
+                <button onClick={() => setShowImgPicker(true)}
+                  title="Choisir le modèle d'illustration"
+                  style={{ background:'#f3e8ff', border:`1.5px solid #7c3aed`, borderRadius:20, padding:'4px 12px', fontSize:12, cursor:'pointer', color:'#7c3aed', display:'flex', alignItems:'center', gap:4, maxWidth: isMobile ? 140 : 220, overflow:'hidden' }}>
+                  <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                    {IMAGE_MODELS.find(m => m.id === state.settings.defaultImageModel)?.name
+                      || state.settings.defaultImageModel?.split('/').pop()
+                      || 'DALL·E 3'}
+                  </span>
+                  <span style={{ color:'#a855f7', fontSize:10, flexShrink:0 }}>▾</span>
+                </button>
+                {showImgPicker && (
+                  <ImageModelPickerModal
+                    current={state.settings.defaultImageModel}
+                    onSelect={val => {
+                      const next = { ...state.settings, defaultImageModel: val };
+                      dispatch({ type:'SET_SETTINGS', payload: next });
+                      saveSettings(next);
+                    }}
+                    onClose={() => setShowImgPicker(false)}
+                  />
+                )}
+              </>
             ) : (
               <>
                 <button onClick={() => dispatch({ type:'TOGGLE_MODEL_PICKER' })}
@@ -3522,6 +3691,36 @@ function ModelRow({ m, current, onSelect }) {
   );
 }
 
+// ─── Settings — section image model (composant dédié pour le picker) ──
+function SettingsImageModelSection({ s, setS }) {
+  const [showPicker, setShowPicker] = useState(false);
+  const activeModel = IMAGE_MODELS.find(m => m.id === s.defaultImageModel);
+  const modelLabel = activeModel
+    ? `${activeModel.name} (${activeModel.by})`
+    : (s.defaultImageModel?.split('/').pop() || 'DALL·E 3');
+
+  return (
+    <section>
+      <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:8 }}>🎨 Illustrations — Modèle par défaut</div>
+      <button onClick={() => setShowPicker(true)}
+        style={{ width:'100%', padding:'10px 14px', border:`1.5px solid #7c3aed`, borderRadius:8, fontSize:14, background:'#f9f0ff', cursor:'pointer', color:'#7c3aed', display:'flex', alignItems:'center', justifyContent:'space-between', fontFamily:'var(--pc-font-body)', fontWeight:600 }}>
+        <span>🎨 {modelLabel}</span>
+        <span style={{ fontSize:12, color:'#a855f7' }}>Changer ▾</span>
+      </button>
+      <p style={{ fontSize:12, color:'#aaa', margin:'6px 0 0' }}>
+        Active le mode 🎨 dans le chat pour générer des images. Catalogue complet OpenRouter disponible.
+      </p>
+      {showPicker && (
+        <ImageModelPickerModal
+          current={s.defaultImageModel}
+          onSelect={val => setS(p => ({ ...p, defaultImageModel: val }))}
+          onClose={() => setShowPicker(false)}
+        />
+      )}
+    </section>
+  );
+}
+
 // ─── Settings ─────────────────────────────────────────────────
 function Settings() {
   const { state, dispatch } = useApp();
@@ -3582,20 +3781,7 @@ function Settings() {
             </p>
           </section>
           {/* ── 🎨 Illustrations ──────────────────────────── */}
-          <section>
-            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:8 }}>🎨 Illustrations — Modèle par défaut</div>
-            <select
-              value={s.defaultImageModel || 'openai/dall-e-3'}
-              onChange={e => setS(p => ({ ...p, defaultImageModel: e.target.value }))}
-              style={{ width:'100%', padding:'9px 13px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:14, outline:'none', background:C.paper, cursor:'pointer' }}>
-              {IMAGE_MODELS.map(m => (
-                <option key={m.id} value={m.id}>{m.name} — {m.by} ({m.size})</option>
-              ))}
-            </select>
-            <p style={{ fontSize:12, color:'#aaa', margin:'6px 0 0' }}>
-              Dans le chat, active le mode 🎨 pour générer des images avec ce modèle. Modifiable à la volée dans l'input.
-            </p>
-          </section>
+          <SettingsImageModelSection s={s} setS={setS} />
           <section>
             <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:8 }}>Budget mensuel ($)</div>
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
