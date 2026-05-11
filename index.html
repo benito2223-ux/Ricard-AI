@@ -77,22 +77,15 @@ html, body, #root { height: 100dvh; }
   overscroll-behavior: contain;
 }
 
-/* Bottom nav safe area */
-.mobile-nav {
-  position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
-  background: var(--pc-color-paper); border-top: 4px solid var(--pc-color-black);
-  display: flex; align-items: stretch;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+/* ── Mobile Drawer ── */
+@keyframes drawerSlideIn {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0); }
 }
-.mobile-nav-btn {
-  flex: 1; display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  gap: 3px; padding: 10px 0; border: none; background: transparent;
-  cursor: pointer; font-family: inherit; -webkit-tap-highlight-color: transparent;
-  min-height: 52px;
+@keyframes drawerFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
-.mobile-nav-btn span:first-child { font-size: 22px; line-height: 1; }
-.mobile-nav-btn span:last-child  { font-size: 11px; font-weight: 500; }
 
 /* ── DARK MODE ── */
 body.dark-mode { filter: invert(0.92) hue-rotate(180deg); }
@@ -386,7 +379,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.17';
+const APP_VERSION = '1.18';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -1165,6 +1158,8 @@ function reducer(state, action) {
     case 'CONFIRM_PROFILE': return { ...buildState(action.payload), showPinEntry: false, pendingProfile: null };
     case 'SHOW_FAMILY_GATE': return { ...state, showFamilyGate: true };
     case 'HIDE_FAMILY_GATE': return { ...state, showFamilyGate: false };
+    case 'OPEN_DRAWER':  return { ...state, showMobileDrawer: true };
+    case 'CLOSE_DRAWER': return { ...state, showMobileDrawer: false };
     case 'SHOW_TOAST': {
       const t = { id: Date.now() + Math.random(), ...action.payload };
       return { ...state, toasts: [...(state.toasts||[]), t] };
@@ -1324,6 +1319,7 @@ function AppProvider({ children }) {
       artifact: null, showArtifact: false,
       showSearch: false, showCompare: false,
       showFamilyGate: needsGate,
+      showMobileDrawer: false,
       toasts: [],
       welcome: null,
     };
@@ -1981,15 +1977,25 @@ function ProfileSelector() {
   );
 }
 
-// ─── Sidebar ─────────────────────────────────────────────────
+// ─── Tabs & navigation ────────────────────────────────────────
 const TAB_DEFS = [
   { id:'chat',    label:'Chat',    icon:'💬' },
   { id:'code',    label:'Code',    icon:'⌨️' },
   { id:'design',  label:'Design',  icon:'🎨' },
-  { id:'zya',     label:'Zya',     icon:'✨', color:C.purple },
-  { id:'zelie',   label:'Zélie',   icon:'🌸', color:C.pink },
+  { id:'zya',     label:'Nova · Zya',   icon:'✨', color:C.purple, kidOnly:'zya' },
+  { id:'zelie',   label:'Pixel · Zélie',icon:'🌸', color:C.pink,   kidOnly:'zelie' },
   { id:'famille', label:'Famille', icon:'👨‍👩‍👧', color:C.teal },
 ];
+
+// Filtre les onglets selon le profil actif
+function getVisibleTabs(pid) {
+  const profile = getProfile(pid);
+  return TAB_DEFS.filter(t => {
+    if (!t.kidOnly) return true;              // tabs généraux : toujours visibles
+    if (profile?.admin) return false;         // parents : masquer les onglets enfants
+    return t.kidOnly === pid;                 // enfant : seulement son propre onglet
+  });
+}
 
 function timeAgo(ts) {
   const d = Date.now() - ts;
@@ -2078,9 +2084,9 @@ function Sidebar({ collapsed, onToggle }) {
         {collapsed && <button onClick={onToggle} style={{ ...IB, marginLeft:-4 }}>›</button>}
       </div>
 
-      {/* Tabs */}
+      {/* Tabs — filtrés selon le profil */}
       <div style={{ padding:'8px 6px', display:'flex', flexDirection:'column', gap:2 }}>
-        {TAB_DEFS.map(t => {
+        {getVisibleTabs(state.profile).map(t => {
           const active = state.tab === t.id;
           return (
             <button key={t.id} onClick={() => dispatch({ type:'SET_TAB', payload:t.id })}
@@ -2176,8 +2182,8 @@ function ChatHeader({ tabId, title, icon, accentColor }) {
     <div style={{ padding: isMobile ? '8px 12px' : '10px 20px', paddingTop: isMobile ? 'max(8px, env(safe-area-inset-top, 8px))' : '10px', borderBottom:`3px solid ${C.ink}`, background:C.paper, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, minHeight: isMobile ? 'calc(52px + env(safe-area-inset-top, 0px))' : '52px', flexShrink:0 }}>
       <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0, flex:1 }}>
         {isMobile && (
-          <button onClick={() => dispatch({ type:'SET_PROFILE', payload:null })}
-            style={{ background:'none', border:'none', cursor:'pointer', fontSize:22, padding:'0 4px', flexShrink:0, color:C.muted, minHeight:44, minWidth:44, display:'flex', alignItems:'center', justifyContent:'center' }}>☰</button>
+          <button onClick={() => dispatch({ type:'OPEN_DRAWER' })}
+            style={{ background:'none', border:'none', cursor:'pointer', fontSize:24, padding:'0 4px', flexShrink:0, color:C.ink, minHeight:44, minWidth:44, display:'flex', alignItems:'center', justifyContent:'center' }}>☰</button>
         )}
         {icon && <span style={{ fontSize:18, flexShrink:0 }}>{icon}</span>}
         <span style={{ fontFamily:'var(--pc-font-display)', fontSize: isMobile ? 16 : 20, color: accentColor || C.ink, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth: isMobile ? 150 : 300 }}>
@@ -4475,24 +4481,195 @@ function ArtifactPanel() {
   );
 }
 
-// ─── Mobile Nav ───────────────────────────────────────────────
-function MobileNav() {
+// ─── Mobile Drawer ────────────────────────────────────────────
+function MobileDrawer() {
   const { state, dispatch } = useApp();
+  if (!state.showMobileDrawer) return null;
+
+  const pid     = state.profile;
+  const profile = getProfile(pid);
+  const tabs    = getVisibleTabs(pid);
+  const tabState = state.tabs[state.tab];
+  const convs   = tabState?.convs || [];
+  const activeId = tabState?.activeId;
+  const budget  = state.settings.budgets?.[pid] || 50;
+  const remaining = Math.max(0, budget - state.monthCost);
+  const overBudget = state.monthCost > budget * 0.8;
+  const streak  = getStreak(pid);
+  const xp      = getXP(pid);
+  const rank    = getRank(xp);
+
+  const close  = () => dispatch({ type:'CLOSE_DRAWER' });
+  const goTab  = id => { dispatch({ type:'SET_TAB', payload:id }); close(); };
+  const goConv = id => { dispatch({ type:'SELECT_CONV', payload:{ tabId:state.tab, convId:id } }); close(); };
+
+  const sorted = convs.slice().sort((a, b) => {
+    if (a.pinned && !b.pinned) return -1;
+    if (!a.pinned && b.pinned) return 1;
+    return b.createdAt - a.createdAt;
+  });
+
+  // Couleur d'accent selon le tab actif
+  const activeTab = tabs.find(t => t.id === state.tab) || tabs[0];
+  const accent = activeTab?.color || C.orange;
+
   return (
-    <nav className="mobile-nav">
-      {TAB_DEFS.map(t => {
-        const active = state.tab === t.id;
-        return (
-          <button key={t.id} className="mobile-nav-btn"
-            onClick={() => dispatch({ type:'SET_TAB', payload:t.id })}
-            style={{ color: active ? (t.color || C.ink) : C.muted, fontWeight: active ? 700 : 400 }}>
-            <span>{t.icon}</span>
-            <span>{t.label}</span>
-            {active && <div style={{ width:20, height:2, background: t.color || C.ink, borderRadius:999, marginTop:1 }} />}
+    <>
+      {/* Backdrop */}
+      <div onClick={close}
+        style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:200,
+          animation:'drawerFadeIn .2s ease' }} />
+
+      {/* Drawer panel */}
+      <div style={{
+        position:'fixed', top:0, left:0, bottom:0,
+        width:'82vw', maxWidth:300,
+        background:C.paper, borderRight:`4px solid ${C.ink}`,
+        zIndex:201, display:'flex', flexDirection:'column',
+        animation:'drawerSlideIn .22s cubic-bezier(.25,.46,.45,.94)',
+        paddingTop:'env(safe-area-inset-top, 0px)',
+        paddingBottom:'env(safe-area-inset-bottom, 0px)',
+        boxShadow:'6px 0 24px rgba(0,0,0,.18)',
+      }}>
+
+        {/* ── Profil header ── */}
+        <div style={{ padding:'16px 14px 12px', borderBottom:`3px solid ${C.ink}`,
+          background: C.shade, flexShrink:0 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <div style={{ width:46, height:46, borderRadius:'50%',
+              background: profile?.color || C.orange,
+              border:`3px solid ${C.ink}`, boxShadow:`2px 2px 0 ${C.ink}`,
+              display:'flex', alignItems:'center', justifyContent:'center',
+              fontSize:22, fontFamily:"'Permanent Marker',cursive", flexShrink:0 }}>
+              {profile?.label}
+            </div>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontFamily:'var(--pc-font-display)', fontSize:20, color:C.ink,
+                lineHeight:1.1 }}>{profile?.name}</div>
+              <div style={{ fontSize:12, color:'#888', marginTop:3, display:'flex', gap:8 }}>
+                <span>🔥 {streak} jour{streak > 1 ? 's' : ''}</span>
+                <span style={{ color: rank.color, fontWeight:600 }}>{rank.label}</span>
+              </div>
+            </div>
+            <button onClick={close}
+              style={{ background:'none', border:`2px solid ${C.faint}`, borderRadius:8,
+                cursor:'pointer', fontSize:18, color:'#888', width:36, height:36,
+                display:'flex', alignItems:'center', justifyContent:'center',
+                flexShrink:0 }}>✕</button>
+          </div>
+        </div>
+
+        {/* ── Navigation ── */}
+        <div style={{ padding:'10px 10px 4px', flexShrink:0 }}>
+          <div style={{ fontSize:10, fontWeight:700, color:'#aaa', textTransform:'uppercase',
+            letterSpacing:1.2, marginBottom:6, paddingLeft:2 }}>Navigation</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+            {tabs.map(t => {
+              const active = state.tab === t.id;
+              return (
+                <button key={t.id} onClick={() => goTab(t.id)}
+                  style={{ display:'flex', alignItems:'center', gap:12,
+                    padding:'12px 14px', minHeight:50,
+                    border: active ? `3px solid ${C.ink}` : `2px solid ${C.faint}`,
+                    borderRadius: active ? 'var(--pc-radius-3)' : 10,
+                    background: active ? C.yellow : 'white',
+                    cursor:'pointer', textAlign:'left', width:'100%',
+                    boxShadow: active ? `3px 3px 0 ${C.ink}` : 'none',
+                    transition:'all .1s steps(2)' }}>
+                  <span style={{ fontSize:20, lineHeight:1, flexShrink:0 }}>{t.icon}</span>
+                  <span style={{ fontSize:15, fontWeight: active ? 700 : 500,
+                    color: active ? C.ink : (t.color || '#444') }}>{t.label}</span>
+                  {active && <div style={{ marginLeft:'auto', width:8, height:8,
+                    borderRadius:'50%', background: t.color || C.ink, flexShrink:0 }} />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── Conversations ── */}
+        <div style={{ flex:1, display:'flex', flexDirection:'column', minHeight:0,
+          borderTop:`2px solid ${C.faint}`, marginTop:8 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+            padding:'10px 14px 6px', flexShrink:0 }}>
+            <div style={{ fontSize:10, fontWeight:700, color:'#aaa',
+              textTransform:'uppercase', letterSpacing:1.2 }}>
+              Historique · {activeTab?.label}
+            </div>
+            <button
+              onClick={() => { dispatch({ type:'NEW_CONV', payload:{ tabId:state.tab } }); close(); }}
+              style={{ background:C.yellow, border:`2px solid ${C.ink}`, borderRadius:6,
+                padding:'3px 10px', fontSize:13, cursor:'pointer',
+                fontWeight:700, boxShadow:`2px 2px 0 ${C.ink}` }}>
+              + Nouveau
+            </button>
+          </div>
+          <div className="scroll-y" style={{ flex:1, padding:'0 10px 8px', overflowY:'auto' }}>
+            {sorted.length === 0 ? (
+              <div style={{ textAlign:'center', color:'#bbb', fontSize:13,
+                padding:'20px 0', fontStyle:'italic' }}>Aucune conversation</div>
+            ) : sorted.map(c => (
+              <button key={c.id} onClick={() => goConv(c.id)}
+                style={{ display:'block', width:'100%', textAlign:'left',
+                  padding:'10px 12px', borderRadius:8, marginBottom:3, minHeight:52,
+                  background: c.id===activeId ? 'white' : 'transparent',
+                  border: c.id===activeId ? `2px solid ${accent}` : `1px solid transparent`,
+                  cursor:'pointer', transition:'background .1s' }}
+                onTouchStart={e => { if (c.id!==activeId) e.currentTarget.style.background='#f5f2eb'; }}
+                onTouchEnd={e => { if (c.id!==activeId) e.currentTarget.style.background='transparent'; }}>
+                <div style={{ fontSize:14, fontWeight: c.id===activeId ? 700 : 500,
+                  color:C.ink, whiteSpace:'nowrap', overflow:'hidden',
+                  textOverflow:'ellipsis', lineHeight:1.3 }}>
+                  {c.pinned ? '📌 ' : ''}{c.title}
+                </div>
+                <div style={{ fontSize:12, color:'#aaa', marginTop:3 }}>
+                  {timeAgo(c.createdAt)} · ${c.totalCost.toFixed(4)}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Actions bas ── */}
+        <div style={{ padding:'10px 12px 12px', borderTop:`3px solid ${C.ink}`,
+          background:C.shade, flexShrink:0, display:'flex', flexDirection:'column', gap:8 }}>
+          <div style={{ display:'flex', gap:8 }}>
+            <button onClick={() => { dispatch({ type:'TOGGLE_SEARCH' }); close(); }}
+              style={{ flex:1, padding:'10px 8px', border:`2px solid ${C.faint}`,
+                borderRadius:10, background:'white', cursor:'pointer', fontSize:14,
+                display:'flex', alignItems:'center', justifyContent:'center',
+                gap:6, minHeight:44, fontFamily:'var(--pc-font-body)' }}>
+              🔍 <span style={{ fontSize:13 }}>Recherche</span>
+            </button>
+            <button onClick={() => { dispatch({ type:'TOGGLE_SETTINGS' }); close(); }}
+              style={{ flex:1, padding:'10px 8px', border:`2px solid ${C.faint}`,
+                borderRadius:10, background:'white', cursor:'pointer', fontSize:14,
+                display:'flex', alignItems:'center', justifyContent:'center',
+                gap:6, minHeight:44, fontFamily:'var(--pc-font-body)' }}>
+              ⚙️ <span style={{ fontSize:13 }}>Réglages</span>
+            </button>
+          </div>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+            padding:'2px 2px' }}>
+            <span style={{ fontSize:13, color:C.muted }}>
+              💰 ${state.monthCost.toFixed(2)} ce mois
+            </span>
+            <span style={{ fontSize:12, background: overBudget ? C.red : C.green,
+              color:'white', padding:'2px 10px', borderRadius:999, fontWeight:600 }}>
+              ${remaining.toFixed(0)} restants
+            </span>
+          </div>
+          <button onClick={() => { dispatch({ type:'SET_PROFILE', payload:null }); close(); }}
+            style={{ width:'100%', padding:'12px', border:`3px solid ${C.ink}`,
+              borderRadius:'var(--pc-radius-3)', background:C.paper, cursor:'pointer',
+              fontSize:15, fontFamily:'var(--pc-font-display)',
+              boxShadow:`3px 3px 0 ${C.ink}`, minHeight:48,
+              display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+            👤 Changer de profil
           </button>
-        );
-      })}
-    </nav>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -4547,7 +4724,7 @@ function Layout() {
           </button>
         </div>
       )}
-      <div style={{ flex:1, display:'flex', minHeight:0, paddingBottom: isMobile ? 'calc(56px + env(safe-area-inset-bottom, 0px))' : 0 }}>
+      <div style={{ flex:1, display:'flex', minHeight:0, paddingBottom: 0 }}>
         {!isMobile && <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(v => !v)} />}
         <main style={{ flex:1, display:'flex', minWidth:0, minHeight:0, overflow:'hidden' }}>
           <div style={{ flex:1, display:'flex', flexDirection:'column', minWidth:0, minHeight:0, overflow:'hidden' }}>
@@ -4556,7 +4733,7 @@ function Layout() {
           {!isMobile && <ArtifactPanel />}
         </main>
       </div>
-      {isMobile && <MobileNav />}
+      {isMobile && <MobileDrawer />}
       <ModelPicker />
       <Settings />
       <Dashboard />
