@@ -1097,7 +1097,7 @@ function getWelcomeMsg(pid) {
 }
 
 // ─── App State ───────────────────────────────────────────────
-const TABS = ['chat','code','design','zya','zelie'];
+const TABS = ['chat','code','zya','zelie'];
 function newConv(tabId, settings) {
   const dm = settings?.defaultModels ?? DEFAULT_MODELS_PER_TAB;
   return {
@@ -1985,7 +1985,6 @@ function ProfileSelector() {
 const TAB_DEFS = [
   { id:'chat',    label:'Chat',    icon:'💬' },
   { id:'code',    label:'Code',    icon:'⌨️' },
-  { id:'design',  label:'Design',  icon:'🎨' },
   { id:'zya',     label:'Nova · Zya',   icon:'✨', color:C.purple, kidOnly:'zya' },
   { id:'zelie',   label:'Pixel · Zélie',icon:'🌸', color:C.pink,   kidOnly:'zelie' },
   { id:'famille', label:'Famille', icon:'👨‍👩‍👧', color:C.teal },
@@ -2574,6 +2573,22 @@ function ChatThread({ tabId }) {
                     {speakingId === msg.id
                       ? <span className="speaking-wave"><span/><span/><span/></span>
                       : '🔊'}
+                  </button>
+                )}
+                {/* 📱 WhatsApp — chat tab uniquement, toujours visible sur mobile */}
+                {tabId === 'chat' && msg.role === 'assistant' && msg.done && msg.content && (
+                  <button
+                    onClick={() => {
+                      // WhatsApp limite à ~4096 chars — on tronque proprement si besoin
+                      const MAX = 3800;
+                      const txt = msg.content.length > MAX
+                        ? msg.content.slice(0, MAX) + '…\n\n_(réponse tronquée — voir Ricard AI)_'
+                        : msg.content;
+                      window.open('https://wa.me/?text=' + encodeURIComponent(txt), '_blank');
+                    }}
+                    title="Partager sur WhatsApp"
+                    style={{ ...ACT_BTN, opacity: isMobile ? 1 : (hoveredId === msg.id ? 1 : 0), transition:'opacity .15s', padding:'1px 6px', background:'transparent', borderColor:'#e0ddd4', color:'#25D366', fontSize:15 }}>
+                    📱
                   </button>
                 )}
                 {hoveredId === msg.id && msg.done && !state.streaming && (
@@ -4707,7 +4722,7 @@ function Layout() {
   const isMobile = useIsMobile();
   const [collapsed, setCollapsed] = useState(false);
   const [darkMode, setDarkMode] = useState(() => !!localStorage.getItem('ricard_dark'));
-  const TAB_MAP = { chat:<ChatTab/>, code:<CodeTab/>, design:<DesignTab/>, zya:<ZyaTab/>, zelie:<ZelieTab/>, famille:<FamilyTab/> };
+  const TAB_MAP = { chat:<ChatTab/>, code:<CodeTab/>, zya:<ZyaTab/>, zelie:<ZelieTab/>, famille:<FamilyTab/> };
 
   // Apply dark mode class on mount and toggle
   useEffect(() => {
