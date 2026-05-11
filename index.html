@@ -245,35 +245,64 @@ async function cloudSave(pid, tab, convs) {
     });
   } catch(e) { console.warn('[Firebase] save:', e.message); }
 }
-// ─── Sync clé API via Firebase ───────────────────────────────
+// ─── Sync config famille via Firebase (clé API + réglages) ───
+// Champs synchronisés entre tous les appareils de la famille
+const SHARED_SETTINGS_KEYS = [
+  'apiKey', 'defaultModels', 'defaultImageModel',
+  'budgets', 'dailyLimits', 'accessHours', 'dailyGoals',
+  'socraticMode', 'profileContext', 'profileCodes',
+  'appCode', 'autoLockMinutes',
+];
+
+function extractSharedSettings(settings) {
+  const out = {};
+  SHARED_SETTINGS_KEYS.forEach(k => { if (settings[k] !== undefined) out[k] = settings[k]; });
+  return out;
+}
+
+async function cloudSaveConfig(settings) {
+  if (!CLOUD.enabled) return;
+  try {
+    const payload = { ...extractSharedSettings(settings), updatedAt: new Date().toISOString() };
+    await CLOUD.db.collection('ricard_config').doc(getFamilyId()).set(payload, { merge: true });
+    console.log('[Firebase] ☁️ config famille sauvegardée');
+  } catch(e) { console.warn('[Firebase] config save:', e.message); }
+}
+
+// Rétro-compat : cloudSaveApiKey reste utilisable ailleurs
 async function cloudSaveApiKey(apiKey) {
   if (!CLOUD.enabled || !apiKey) return;
   try {
     await CLOUD.db.collection('ricard_config').doc(getFamilyId()).set(
-      { apiKey, updatedAt: new Date().toISOString() },
-      { merge: true }
+      { apiKey, updatedAt: new Date().toISOString() }, { merge: true }
     );
-    console.log('[Firebase] 🔑 clé API sauvegardée');
   } catch(e) { console.warn('[Firebase] apiKey save:', e.message); }
 }
 
-function cloudWatchApiKey(callback) {
+// Écoute en temps réel — appelle onConfig(remoteSharedSettings) à chaque changement
+function cloudWatchConfig(onConfig) {
   if (!CLOUD.enabled) return () => {};
   try {
     const unsub = CLOUD.db
       .collection('ricard_config')
       .doc(getFamilyId())
       .onSnapshot(doc => {
-        if (doc.exists) {
-          const key = doc.data()?.apiKey;
-          if (key) callback(key);
-        }
-      }, err => console.warn('[Firebase] apiKey watch:', err.message));
+        if (!doc.exists) return;
+        const data = doc.data();
+        // Extrait uniquement les champs partagés présents dans le document
+        const shared = {};
+        SHARED_SETTINGS_KEYS.forEach(k => { if (data[k] !== undefined) shared[k] = data[k]; });
+        if (Object.keys(shared).length) onConfig(shared);
+      }, err => console.warn('[Firebase] config watch:', err.message));
     return unsub;
   } catch(e) {
-    console.warn('[Firebase] cloudWatchApiKey:', e.message);
+    console.warn('[Firebase] cloudWatchConfig:', e.message);
     return () => {};
   }
+}
+// Rétro-compat
+function cloudWatchApiKey(cb) {
+  return cloudWatchConfig(cfg => { if (cfg.apiKey) cb(cfg.apiKey); });
 }
 
 async function cloudLoadAll(pid) {
@@ -1337,44 +1366,56 @@ function AppProvider({ children }) {
     return () => { cancelled = true; };
   }, [state.profile]);
 
-  // Refs pour éviter les boucles de sync clé API
-  const apiKeyRef       = useRef(state.settings.apiKey); // clé courante
-  const lastPushedKey   = useRef(state.settings.apiKey); // dernière clé envoyée à Firebase
-  useEffect(() => { apiKeyRef.current = state.settings.apiKey; }, [state.settings.apiKey]);
+  // ── Anti-boucle sync Firebase ────────────────────────────────
+  // Signature JSON des derniers réglages poussés vers Firebase
+  const lastPushedCfg = useRef('');
+  // Signature JSON des derniers réglages reçus depuis Firebase (pour éviter re-push)
+  const lastReceivedCfg = useRef('');
 
-  // Persist settings + push clé API vers Firebase si elle change
+  // Persist settings localement + push vers Firebase si les réglages partagés changent
   useEffect(() => {
     saveSettings(state.settings);
-    const key = state.settings.apiKey;
-    if (key && key !== lastPushedKey.current) {
-      lastPushedKey.current = key;
-      cloudSaveApiKey(key);
+    if (!CLOUD.enabled) return;
+    const shared = extractSharedSettings(state.settings);
+    const sig = JSON.stringify(shared);
+    // Ne push que si différent de ce qu'on a reçu ET de ce qu'on a déjà poussé
+    if (sig !== lastPushedCfg.current && sig !== lastReceivedCfg.current) {
+      lastPushedCfg.current = sig;
+      cloudSaveConfig(state.settings);
     }
   }, [state.settings]);
 
-  // 🔑 Écoute Firebase — synchronise la clé API sur tous les appareils famille
+  // ☁️ Écoute Firebase — synchronise TOUS les réglages famille en temps réel
   useEffect(() => {
-    const unsub = cloudWatchApiKey(remoteKey => {
-      if (!remoteKey || remoteKey === apiKeyRef.current) return; // déjà à jour
-      const hadKey = !!apiKeyRef.current;
-      // Met à jour les refs AVANT dispatch pour stopper la boucle push
-      apiKeyRef.current     = remoteKey;
-      lastPushedKey.current = remoteKey;
-      // Sauvegarde locale
-      lsSet('apikey_backup', remoteKey);
-      // Applique dans le state React
-      dispatch({ type:'SET_SETTINGS', payload:{ ...loadSettings(), apiKey: remoteKey } });
-      // Toast seulement si l'appareil n'avait pas de clé (premier setup)
-      if (!hadKey) {
+    const unsub = cloudWatchConfig(remoteShared => {
+      const sig = JSON.stringify(remoteShared);
+      if (sig === lastPushedCfg.current || sig === lastReceivedCfg.current) return; // déjà connu
+
+      const localSettings = loadSettings();
+      const hadKey = !!localSettings.apiKey;
+
+      // Marque comme reçu AVANT dispatch pour bloquer le re-push
+      lastReceivedCfg.current = sig;
+      lastPushedCfg.current   = sig;
+
+      // Sauvegarde locale de la clé API si elle arrive
+      if (remoteShared.apiKey) lsSet('apikey_backup', remoteShared.apiKey);
+
+      // Merge : réglages distants > réglages locaux pour les champs partagés
+      const merged = { ...localSettings, ...remoteShared };
+      dispatch({ type:'SET_SETTINGS', payload: merged });
+
+      // Toast uniquement si c'est la première config (appareil vierge)
+      if (!hadKey && remoteShared.apiKey) {
         dispatch({ type:'SHOW_TOAST', payload:{
-          message: '🔑 Clé API synchronisée depuis le cloud famille !',
-          type: 'info', duration: 6000,
+          message: '☁️ Réglages famille synchronisés !',
+          type: 'info', duration: 5000,
         }});
       }
-      console.log('[Firebase] 🔑 clé API reçue du cloud');
+      console.log('[Firebase] ☁️ réglages famille reçus');
     });
-    return unsub; // cleanup au démontage
-  }, []); // mount une seule fois — le snapshot reste actif
+    return unsub;
+  }, []); // mount une seule fois
 
   // Toast milestone streak à la connexion
   useEffect(() => {
