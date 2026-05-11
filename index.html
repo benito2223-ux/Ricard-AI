@@ -1372,6 +1372,10 @@ function AppProvider({ children }) {
   useEffect(() => {
     saveSettings(state.settings);
     if (!CLOUD.enabled) return;
+    // GUARD : ne jamais écraser Firestore avec des settings vides (état initial sans clé API).
+    // Sans ce guard, un fresh start (après reset) écrase les settings distants avant que
+    // le onSnapshot ait eu le temps de les livrer.
+    if (!state.settings.apiKey) return;
     const shared = extractSharedSettings(state.settings);
     const sig = JSON.stringify(shared);
     // Ne push que si différent de ce qu'on a reçu ET de ce qu'on a déjà poussé
@@ -4205,6 +4209,32 @@ function Settings() {
               </button>
             </div>
             <p style={{ fontSize:11, color:'#bbb', margin:'6px 0 0' }}>Le fichier contient toutes les conversations de la famille. Tu peux le stocker dans Google Drive, iCloud ou l'envoyer par message.</p>
+
+            {/* Forcer resync Firebase */}
+            {CLOUD.enabled && (
+              <button
+                onClick={() => {
+                  if (!CLOUD.enabled) return;
+                  CLOUD.db.collection('ricard_config').doc(getFamilyId()).get()
+                    .then(doc => {
+                      if (!doc.exists) { alert('Aucune config distante trouvée dans Firebase.'); return; }
+                      const data = doc.data();
+                      const shared = {};
+                      SHARED_SETTINGS_KEYS.forEach(k => { if (data[k] !== undefined) shared[k] = data[k]; });
+                      if (!Object.keys(shared).length) { alert('Config Firebase vide.'); return; }
+                      const merged = { ...loadSettings(), ...shared };
+                      dispatch({ type:'SET_SETTINGS', payload: merged });
+                      if (shared.apiKey) lsSet('apikey_backup', shared.apiKey);
+                      alert('✅ Réglages synchronisés depuis Firebase !');
+                    })
+                    .catch(e => alert('Erreur Firebase : ' + e.message));
+                }}
+                style={{ marginTop:10, width:'100%', padding:'9px 0', borderRadius:8,
+                  border:`1.5px solid ${C.teal}`, background:'#e6fafa', color:C.teal,
+                  fontSize:13, cursor:'pointer', fontWeight:600 }}>
+                ☁️ Récupérer les réglages depuis Firebase
+              </button>
+            )}
           </section>
 
           {/* ── Mémoire & instructions personnelles ─────── */}
@@ -4782,7 +4812,18 @@ class ErrorBoundary extends React.Component {
           🔄 Réessayer
         </button>
         <button
-          onClick={() => { localStorage.clear(); window.location.reload(); }}
+          onClick={() => {
+            // Vider les conversations et le cache UI — mais GARDER la clé API,
+            // les settings et la config Firebase pour ne pas perdre la sync famille.
+            const keep = ['ricard_ai_settings', 'ricard_ai_apikey_backup',
+                          'ricard_firebase_config', 'ricard_family_id'];
+            Object.keys(localStorage).forEach(k => {
+              if (!keep.some(prefix => k.startsWith(prefix) || k === prefix)) {
+                localStorage.removeItem(k);
+              }
+            });
+            window.location.reload();
+          }}
           style={{
             padding:'8px 20px', borderRadius:8, border:'1.5px solid #ccc',
             background:'transparent', color:'#888', fontSize:13,
