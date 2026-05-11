@@ -326,7 +326,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.16';
+const APP_VERSION = '1.17';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -665,7 +665,8 @@ function loadSettings() {
       zya:   { enabled:false, start:'08:00', end:'21:00' },
       zelie: { enabled:false, start:'08:00', end:'21:00' },
     },
-    dailyGoals:      s.dailyGoals      ?? { zya:'', zelie:'' },
+    dailyGoals:        s.dailyGoals        ?? { zya:'', zelie:'' },
+    defaultImageModel: s.defaultImageModel ?? 'openai/dall-e-3',
   };
 }
 function dateKey() { const d = new Date(); return `${d.getFullYear()}_${d.getMonth()+1}_${d.getDate()}`; }
@@ -945,6 +946,48 @@ function useVoiceInput(onResult) {
   return { listening, supported, toggle, interimText };
 }
 
+// ─── Image generation ─────────────────────────────────────────
+const IMAGE_MODELS = [
+  { id:'openai/dall-e-3',                          name:'DALL·E 3',       by:'OpenAI',       size:'1024×1024' },
+  { id:'openai/dall-e-2',                          name:'DALL·E 2',       by:'OpenAI',       size:'1024×1024' },
+  { id:'black-forest-labs/flux-1.1-pro',           name:'Flux 1.1 Pro',   by:'Black Forest', size:'1024×1024' },
+  { id:'black-forest-labs/flux-schnell',           name:'Flux Schnell',   by:'Black Forest', size:'1024×1024' },
+  { id:'stabilityai/stable-diffusion-xl-base-1.0', name:'SDXL',           by:'Stability AI', size:'1024×1024' },
+];
+
+async function generateImage({ apiKey, model, prompt, onDone, onError }) {
+  try {
+    const res = await fetch('https://openrouter.ai/api/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': location.origin,
+        'X-Title': 'Ricard AI',
+      },
+      body: JSON.stringify({
+        model: model || 'openai/dall-e-3',
+        prompt,
+        n: 1,
+        size: '1024x1024',
+      }),
+    });
+    if (!res.ok) {
+      let msg = `Erreur ${res.status}`;
+      try { const e = await res.json(); msg = e.error?.message || msg; } catch {}
+      onError?.(msg); return;
+    }
+    const data = await res.json();
+    const url     = data.data?.[0]?.url;
+    const revised = data.data?.[0]?.revised_prompt;
+    if (!url) { onError?.('Aucune image reçue — essaie un autre modèle'); return; }
+    onDone?.({ url, revised });
+  } catch(err) {
+    if (err.name === 'AbortError') return;
+    onError?.(err.message || 'Erreur réseau');
+  }
+}
+
 // ─── Helpers gamification ────────────────────────────────────
 const RANKS = [
   { min:0,   label:'🌱 Graine',    color:'#86efac' },
@@ -1146,6 +1189,29 @@ function reducer(state, action) {
               const totalOut = done ? c.totalOut + outTk  : c.totalOut;
               const totalCost = done ? c.totalCost + estimateCost(c.model, inTk, outTk) : c.totalCost;
               return { ...c, messages, totalIn, totalOut, totalCost };
+            }),
+          },
+        },
+      };
+    }
+    case 'UPDATE_IMAGE_MSG': {
+      const { tabId, id, imageUrl, revisedPrompt, error } = action.payload;
+      const t = state.tabs[tabId];
+      if (!t) return state;
+      return {
+        ...state,
+        tabs: {
+          ...state.tabs,
+          [tabId]: {
+            ...t,
+            convs: t.convs.map(c => {
+              if (c.id !== t.activeId) return c;
+              const messages = c.messages.map(m => {
+                if (m.id !== id) return m;
+                if (error) return { ...m, done:true, content:`⚠️ ${error}`, type:undefined };
+                return { ...m, imageUrl, revisedPrompt, done:true };
+              });
+              return { ...c, messages };
             }),
           },
         },
@@ -2011,6 +2077,78 @@ function ChatHeader({ tabId, title, icon, accentColor }) {
   );
 }
 
+// ─── Image Message Content ────────────────────────────────────
+function ImageMsgContent({ msg }) {
+  const isMobile = useIsMobile();
+  const [imgLoaded, setImgLoaded] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleDownload = () => {
+    const a = document.createElement('a');
+    a.href = msg.imageUrl;
+    a.download = `ricard-image-${Date.now()}.png`;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.click();
+  };
+  const handleCopyUrl = () => {
+    navigator.clipboard.writeText(msg.imageUrl).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
+  };
+
+  return (
+    <div>
+      {/* Prompt affiché */}
+      <div style={{ fontSize:12, color:'#888', marginBottom:10, fontStyle:'italic', lineHeight:1.4 }}>
+        🎨 <em>"{msg.imagePrompt}"</em>
+      </div>
+      {/* Image ou spinner */}
+      {msg.imageUrl ? (
+        <div>
+          <div style={{ position:'relative', display:'inline-block', width:'100%' }}>
+            {!imgLoaded && (
+              <div style={{ width:'100%', height:200, background:'#f1eee5', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', border:`3px solid ${C.ink}` }}>
+                <span className="streaming-dot" style={{ width:10, height:10 }} />
+              </div>
+            )}
+            <img
+              src={msg.imageUrl} alt={msg.imagePrompt}
+              onLoad={() => setImgLoaded(true)}
+              style={{ display: imgLoaded ? 'block' : 'none', maxWidth:'100%', width:'100%', borderRadius:8, border:`3px solid ${C.ink}`, boxShadow:`4px 4px 0 ${C.ink}` }}
+            />
+          </div>
+          {/* Prompt révisé si disponible */}
+          {msg.revisedPrompt && msg.revisedPrompt !== msg.imagePrompt && (
+            <div style={{ fontSize:11, color:'#bbb', marginTop:6, fontStyle:'italic', lineHeight:1.35 }}>
+              ✏️ Prompt révisé : {msg.revisedPrompt}
+            </div>
+          )}
+          {/* Boutons actions */}
+          <div style={{ display:'flex', gap:6, marginTop:8, flexWrap:'wrap' }}>
+            <button onClick={handleDownload}
+              style={{ background:C.yellow, border:`2px solid ${C.ink}`, borderRadius:'var(--pc-radius-3)', padding:'4px 12px', fontSize:12, cursor:'pointer', fontWeight:700, boxShadow:`2px 2px 0 ${C.ink}`, fontFamily:'var(--pc-font-display)', color:C.ink }}>
+              ⬇ Télécharger
+            </button>
+            <button onClick={handleCopyUrl}
+              style={{ background:copied?'#e8f5e9':'#f1eee5', border:`2px solid ${copied?C.green:C.faint}`, borderRadius:'var(--pc-radius-3)', padding:'4px 12px', fontSize:12, cursor:'pointer', fontWeight:700, color: copied ? C.green : '#555', transition:'all .2s' }}>
+              {copied ? '✅ Copié !' : '🔗 Copier l\'URL'}
+            </button>
+            <a href={msg.imageUrl} target="_blank" rel="noopener"
+              style={{ background:'#f1eee5', border:`2px solid ${C.faint}`, borderRadius:'var(--pc-radius-3)', padding:'4px 12px', fontSize:12, cursor:'pointer', color:'#555', textDecoration:'none', fontFamily:'var(--pc-font-body)', display:'inline-flex', alignItems:'center' }}>
+              🔍 Ouvrir
+            </a>
+          </div>
+        </div>
+      ) : (
+        /* En cours de génération */
+        <div style={{ display:'flex', alignItems:'center', gap:10, padding:'20px 0' }}>
+          <span className="streaming-dot" style={{ width:8, height:8 }} />
+          <span style={{ fontSize:13, color:'#888' }}>Génération en cours… (peut prendre 10-30 secondes)</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Chat Thread ──────────────────────────────────────────────
 function ChatThread({ tabId }) {
   const { state, dispatch, sendMessage } = useApp();
@@ -2075,9 +2213,11 @@ function ChatThread({ tabId }) {
             {msg.role === 'assistant' && (
               <div style={{ width:32, height:32, borderRadius:'50%', background:C.blue, border:`3px solid ${C.ink}`, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, color:C.ink, fontFamily:'var(--pc-font-display)', boxShadow:`2px 2px 0 ${C.ink}`, marginTop:2 }}>R</div>
             )}
-            <div style={{ maxWidth: isMobile ? '88%' : '72%' }}>
+            <div style={{ maxWidth: msg.type === 'image' ? (isMobile ? '95%' : '80%') : (isMobile ? '88%' : '72%') }}>
               <div style={{ background: msg.role==='user' ? C.yellow : 'white', border:`3px solid ${C.ink}`, borderRadius: msg.role==='user' ? 'var(--pc-radius-1)' : 'var(--pc-radius-2)', padding: isMobile ? '13px 17px' : '12px 16px', fontSize: isMobile ? 17 : 16, lineHeight:1.65, boxShadow:`4px 4px 0 ${C.ink}` }}>
-                {msg.role === 'user' ? (
+                {msg.type === 'image' ? (
+                  <ImageMsgContent msg={msg} />
+                ) : msg.role === 'user' ? (
                   <div>
                     {msg.attachments?.length > 0 && (
                       <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom: msg.content ? 8 : 0 }}>
@@ -2143,6 +2283,8 @@ function InputArea({ tabId, placeholder }) {
   const isMobile = useIsMobile();
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState([]);
+  const [imageMode, setImageMode] = useState(false);
+  const [imgGenerating, setImgGenerating] = useState(false);
   const taRef = useRef(null);
   const abortRef = useRef(null);
   const fileRef = useRef(null);
@@ -2207,14 +2349,45 @@ function InputArea({ tabId, placeholder }) {
   };
   const removeAttachment = (id) => setAttachments(prev => prev.filter(a => a.id !== id));
 
-  const submit = useCallback(() => {
-    if ((!text.trim() && !attachments.length) || state.streaming) return;
+  const submit = useCallback(async () => {
+    if ((!text.trim() && !attachments.length) || state.streaming || imgGenerating) return;
     if (!hasKey) { dispatch({ type:'TOGGLE_SETTINGS' }); return; }
+
+    // ── Mode génération d'image ──────────────────────────
+    if (imageMode && text.trim()) {
+      const prompt = text.trim();
+      const imgModel = state.settings.defaultImageModel || 'openai/dall-e-3';
+      const userMsgId = uuid();
+      const imgMsgId  = uuid();
+      // Message utilisateur
+      dispatch({ type:'ADD_MSG', payload:{ tabId, msg:{ role:'user', content:`🎨 ${prompt}`, id:userMsgId, done:true, inTk:0, outTk:0 } } });
+      // Placeholder image (en cours)
+      dispatch({ type:'ADD_MSG', payload:{ tabId, msg:{ role:'assistant', type:'image', imagePrompt:prompt, imageUrl:null, id:imgMsgId, done:false, inTk:0, outTk:0 } } });
+      setText('');
+      if (taRef.current) taRef.current.style.height = 'auto';
+      setImgGenerating(true);
+      await generateImage({
+        apiKey: state.settings.apiKey,
+        model:  imgModel,
+        prompt,
+        onDone: ({ url, revised }) => {
+          dispatch({ type:'UPDATE_IMAGE_MSG', payload:{ tabId, id:imgMsgId, imageUrl:url, revisedPrompt:revised } });
+          setImgGenerating(false);
+        },
+        onError: (errMsg) => {
+          dispatch({ type:'UPDATE_IMAGE_MSG', payload:{ tabId, id:imgMsgId, imageUrl:null, error:errMsg } });
+          setImgGenerating(false);
+        },
+      });
+      return;
+    }
+
+    // ── Mode texte normal ────────────────────────────────
     sendMessage({ tabId, content: text.trim(), attachments, abortRef });
     setText('');
     setAttachments([]);
     if (taRef.current) taRef.current.style.height = 'auto';
-  }, [text, attachments, state.streaming, hasKey, tabId, sendMessage, dispatch]);
+  }, [text, attachments, state.streaming, imgGenerating, imageMode, hasKey, tabId, sendMessage, dispatch, state.settings]);
 
   const onKey = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } };
   const onInput = e => { setText(e.target.value); e.target.style.height='auto'; e.target.style.height = Math.min(e.target.scrollHeight,160)+'px'; };
@@ -2251,7 +2424,22 @@ function InputArea({ tabId, placeholder }) {
           </div>
         )}
 
-        <textarea ref={taRef} value={text} onChange={onInput} onKeyDown={onKey} placeholder={listening ? '🎤 En écoute… parlez maintenant' : (placeholder || 'Écris ton message… (Entrée pour envoyer)')} disabled={state.streaming} rows={1}
+        {/* Mode image — bannière colorée */}
+        {imageMode && (
+          <div style={{ padding:'6px 14px', background:'linear-gradient(90deg,#a855f720,#ec489920)', borderBottom:`1px solid #e0ddd4`, fontSize:12, color:'#7c3aed', display:'flex', alignItems:'center', gap:6 }}>
+            <span>🎨</span>
+            <span style={{ fontWeight:600 }}>Mode Illustration</span>
+            <span style={{ color:'#aaa', marginLeft:4 }}>— Décris l'image à générer</span>
+            <span style={{ marginLeft:'auto', fontSize:11, color:'#aaa' }}>{IMAGE_MODELS.find(m=>m.id===state.settings.defaultImageModel)?.name || 'DALL·E 3'}</span>
+          </div>
+        )}
+        <textarea ref={taRef} value={text} onChange={onInput} onKeyDown={onKey}
+          placeholder={
+            listening ? '🎤 En écoute… parlez maintenant' :
+            imageMode ? '🎨 Décris l\'illustration à créer…' :
+            (placeholder || 'Écris ton message… (Entrée pour envoyer)')
+          }
+          disabled={state.streaming || imgGenerating} rows={1}
           style={{ width:'100%', padding:'12px 14px', border:'none', outline:'none', resize:'none', fontFamily:'Inter,sans-serif', fontSize:16, lineHeight:1.6, background:'transparent', color:C.ink, minHeight:44, boxSizing:'border-box' }} />
         {interimText && (
           <div style={{ padding:'0 14px 8px', fontSize:13, color:'#aaa', fontStyle:'italic', lineHeight:1.4 }}>
@@ -2260,13 +2448,22 @@ function InputArea({ tabId, placeholder }) {
         )}
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'6px 10px 8px', gap:8 }}>
           <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-            {/* Attach button */}
-            <button onClick={() => fileRef.current?.click()} title="Joindre image ou PDF"
-              style={{ background: attachments.length ? C.blue : '#f1eee5', border:`1px solid ${attachments.length ? C.blue : C.faint}`, borderRadius:20, padding:'3px 10px', fontSize:14, cursor:'pointer', color: attachments.length ? 'white' : '#555', display:'flex', alignItems:'center', gap:3, flexShrink:0 }}>
-              📎{attachments.length > 0 && <span style={{ fontSize:11, fontWeight:700 }}>{attachments.length}</span>}
+            {/* Bouton mode image 🎨 */}
+            <button
+              onClick={() => setImageMode(v => !v)}
+              title={imageMode ? 'Revenir au chat texte' : 'Générer une illustration'}
+              style={{ background: imageMode ? '#7c3aed' : '#f1eee5', border:`1px solid ${imageMode ? '#7c3aed' : C.faint}`, borderRadius:20, padding:'3px 10px', fontSize:14, cursor:'pointer', color: imageMode ? 'white' : '#555', display:'flex', alignItems:'center', gap:3, flexShrink:0, transition:'all .15s' }}>
+              🎨
             </button>
+            {/* Attach button (masqué en mode image) */}
+            {!imageMode && (
+              <button onClick={() => fileRef.current?.click()} title="Joindre image ou PDF"
+                style={{ background: attachments.length ? C.blue : '#f1eee5', border:`1px solid ${attachments.length ? C.blue : C.faint}`, borderRadius:20, padding:'3px 10px', fontSize:14, cursor:'pointer', color: attachments.length ? 'white' : '#555', display:'flex', alignItems:'center', gap:3, flexShrink:0 }}>
+                📎{attachments.length > 0 && <span style={{ fontSize:11, fontWeight:700 }}>{attachments.length}</span>}
+              </button>
+            )}
             {/* Mic button */}
-            {voiceSupported && (
+            {voiceSupported && !imageMode && (
               <button
                 onClick={toggleVoice}
                 className={listening ? 'mic-active' : ''}
@@ -2275,19 +2472,43 @@ function InputArea({ tabId, placeholder }) {
                 🎤
               </button>
             )}
-            <button onClick={() => dispatch({ type:'TOGGLE_MODEL_PICKER' })}
-              style={{ background:'#f1eee5', border:`1px solid ${C.faint}`, borderRadius:20, padding:'4px 12px', fontSize:13, cursor:'pointer', display:'flex', alignItems:'center', gap:4, color:'#555' }}>
-              {model?.name} <span style={{ color:'#aaa', fontSize:11 }}>▾</span>
-            </button>
-            {model?.inCost && !isMobile ? <span style={{ fontSize:11, color:'#aaa' }}>${model.inCost}/M</span> : null}
+            {/* Sélecteur modèle — texte ou image */}
+            {imageMode ? (
+              <select
+                value={state.settings.defaultImageModel || 'openai/dall-e-3'}
+                onChange={e => {
+                  const val = e.target.value;
+                  dispatch({ type:'SET_SETTINGS', payload:{ ...state.settings, defaultImageModel:val } });
+                  saveSettings({ ...state.settings, defaultImageModel:val });
+                }}
+                style={{ background:'#f1eee5', border:`1px solid ${C.faint}`, borderRadius:20, padding:'4px 10px', fontSize:12, cursor:'pointer', color:'#555', outline:'none', maxWidth: isMobile ? 130 : 180 }}>
+                {IMAGE_MODELS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            ) : (
+              <>
+                <button onClick={() => dispatch({ type:'TOGGLE_MODEL_PICKER' })}
+                  style={{ background:'#f1eee5', border:`1px solid ${C.faint}`, borderRadius:20, padding:'4px 12px', fontSize:13, cursor:'pointer', display:'flex', alignItems:'center', gap:4, color:'#555' }}>
+                  {model?.name} <span style={{ color:'#aaa', fontSize:11 }}>▾</span>
+                </button>
+                {model?.inCost && !isMobile ? <span style={{ fontSize:11, color:'#aaa' }}>${model.inCost}/M</span> : null}
+              </>
+            )}
           </div>
           <div style={{ display:'flex', gap:6 }}>
-            {state.streaming && (
+            {imgGenerating && (
+              <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'#7c3aed', padding:'0 8px' }}>
+                <span className="streaming-dot" style={{ background:'#7c3aed', width:6, height:6 }} />
+                <span>Génération…</span>
+              </div>
+            )}
+            {state.streaming && !imageMode && (
               <button onClick={() => { abortRef.current?.abort(); dispatch({ type:'SET_STREAMING', payload:false }); }}
                 style={{ background:C.red, border:`3px solid ${C.ink}`, borderRadius:'var(--pc-radius-3)', color:'white', padding:'6px 14px', fontSize:13, cursor:'pointer', fontWeight:700, boxShadow:`3px 3px 0 ${C.ink}`, fontFamily:'var(--pc-font-display)' }}>■ Stop</button>
             )}
-            <button onClick={submit} disabled={(!text.trim() && !attachments.length) || state.streaming}
-              style={{ background: (text.trim() || attachments.length) && !state.streaming ? C.yellow : C.faint, border:`3px solid ${(text.trim() || attachments.length) && !state.streaming ? C.ink : C.faint}`, borderRadius:'50%', color:C.ink, width: isMobile ? 46 : 40, height: isMobile ? 46 : 40, cursor: (text.trim() || attachments.length) && !state.streaming ? 'pointer' : 'not-allowed', fontSize: isMobile ? 20 : 18, display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.1s steps(2)', fontWeight:900, boxShadow: (text.trim() || attachments.length) && !state.streaming ? `3px 3px 0 ${C.ink}` : 'none' }}>↑</button>
+            <button onClick={submit} disabled={!text.trim() || state.streaming || imgGenerating}
+              style={{ background: text.trim() && !state.streaming && !imgGenerating ? (imageMode ? '#7c3aed' : C.yellow) : C.faint, border:`3px solid ${text.trim() && !state.streaming && !imgGenerating ? C.ink : C.faint}`, borderRadius:'50%', color: imageMode && text.trim() ? 'white' : C.ink, width: isMobile ? 46 : 40, height: isMobile ? 46 : 40, cursor: text.trim() && !state.streaming && !imgGenerating ? 'pointer' : 'not-allowed', fontSize: isMobile ? 18 : 16, display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.1s steps(2)', fontWeight:900, boxShadow: text.trim() && !state.streaming && !imgGenerating ? `3px 3px 0 ${C.ink}` : 'none' }}>
+              {imageMode ? '🎨' : '↑'}
+            </button>
           </div>
         </div>
       </div>
@@ -3358,6 +3579,21 @@ function Settings() {
             </div>
             <p style={{ fontSize:12, color:'#aaa', margin:'6px 0 0' }}>
               Obtenez votre clé sur <a href="https://openrouter.ai/keys" target="_blank" rel="noopener" style={{ color:C.blue }}>openrouter.ai/keys</a>
+            </p>
+          </section>
+          {/* ── 🎨 Illustrations ──────────────────────────── */}
+          <section>
+            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:8 }}>🎨 Illustrations — Modèle par défaut</div>
+            <select
+              value={s.defaultImageModel || 'openai/dall-e-3'}
+              onChange={e => setS(p => ({ ...p, defaultImageModel: e.target.value }))}
+              style={{ width:'100%', padding:'9px 13px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:14, outline:'none', background:C.paper, cursor:'pointer' }}>
+              {IMAGE_MODELS.map(m => (
+                <option key={m.id} value={m.id}>{m.name} — {m.by} ({m.size})</option>
+              ))}
+            </select>
+            <p style={{ fontSize:12, color:'#aaa', margin:'6px 0 0' }}>
+              Dans le chat, active le mode 🎨 pour générer des images avec ce modèle. Modifiable à la volée dans l'input.
             </p>
           </section>
           <section>

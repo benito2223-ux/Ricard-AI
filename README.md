@@ -46,6 +46,14 @@
 - **Objectif du jour** 🎯 : parents définissent un objectif visible en bannière dans les onglets enfants
 - **Dashboard famille** 📊 : cards profil avec streaks, rangs, barres XP, classement semaine
 
+### 🎨 Illustrations IA (Sprint 4 · v1.17)
+- **Bouton 🎨** dans chaque chat : active le mode illustration
+- **5 modèles d'images** : DALL·E 3, DALL·E 2, Flux 1.1 Pro, Flux Schnell, SDXL
+- **Génération inline** : l'image apparaît directement dans la conversation
+- **Actions** : télécharger ⬇, copier URL 🔗, ouvrir en plein écran 🔍
+- **Sélecteur de modèle** image à la volée dans l'input
+- **Configurable** dans Réglages → 🎨 Illustrations
+
 ### ☁️ Sync & Sauvegarde
 - **Firebase Firestore** : sync automatique entre appareils (conversations + messages famille)
 - **Family ID** : identifiant unique famille pour isoler les données
@@ -175,7 +183,8 @@ icon.svg            # Icône app
 | Sprint 1 | ✅ v1.14 | Sécurité : portail famille, codes PIN, auto-lock, Firebase hardcodé |
 | Sprint 2 | ✅ v1.15 | Contrôle parental : plages horaires, alertes budget, bienvenue, stats |
 | Sprint 3 | ✅ v1.16 | Gamification : streaks, rangs XP, objectifs du jour, dashboard famille |
-| Sprint 4 | 🔜 | — |
+| Sprint 4 | ✅ v1.17 | Illustrations IA : génération d'images, 5 modèles, visualisation inline |
+| Sprint 5 | 🔜 | — |
 
 ---
 
@@ -185,4 +194,4 @@ Usage personnel / familial — non destiné à la distribution commerciale.
 
 ---
 
-*Fait avec ❤️ et beaucoup de café ☕ · Ricard AI v1.16*
+*Fait avec ❤️ et beaucoup de café ☕ · Ricard AI v1.17*

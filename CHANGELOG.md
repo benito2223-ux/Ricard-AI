@@ -5,6 +5,32 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [1.17] — 2026-05-11 · Sprint 4 — Génération & Visualisation d'Images
+
+### Ajouté
+- **Constante `IMAGE_MODELS`** : 5 modèles préconfigurés — DALL·E 3, DALL·E 2, Flux 1.1 Pro, Flux Schnell, SDXL
+- **Fonction `generateImage()`** : appel OpenRouter `/api/v1/images/generations` (POST JSON)
+- **Champ `defaultImageModel`** dans `loadSettings()` (défaut : `openai/dall-e-3`)
+- **Composant `ImageMsgContent`** : affichage inline de l'image générée avec :
+  - Spinner pendant la génération
+  - Rendu de l'image avec border punk comics
+  - Prompt révisé si disponible (DALL·E 3 auto-améliore le prompt)
+  - Boutons : ⬇ Télécharger · 🔗 Copier URL · 🔍 Ouvrir dans un onglet
+- **Bouton 🎨 dans l'InputArea** : toggle mode illustration/texte
+  - Bannière violette quand activé
+  - Placeholder adapté au mode
+  - Bouton d'envoi change d'aspect (violet + icône 🎨)
+  - Sélecteur de modèle image inline (remplace le modèle texte en mode image)
+  - Indicateur de génération en cours
+- **Action reducer `UPDATE_IMAGE_MSG`** : met à jour le message placeholder avec l'URL de l'image
+- **Section Réglages 🎨 Illustrations** : choix du modèle par défaut avec description
+- **Masquage des boutons Joindre/Micro** en mode image (non pertinents)
+
+### Technique
+- Version : `1.17` — SW cache : `ricard-ai-v17`
+
+---
+
 ## [1.16] — 2026-05-09 · Sprint 3 — Gamification & Objectifs
 
 ### Ajouté
