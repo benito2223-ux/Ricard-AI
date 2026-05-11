@@ -5,6 +5,37 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [1.18] — 2026-05-11 · Sprint 5 — Refonte UX Mobile & Sync Firebase complète
+
+### Ajouté
+- **Drawer latéral mobile** 📱 : remplace la bottom nav bar — burger ☰ ouvre un panneau glissant depuis la gauche
+  - Header profil avec avatar, nom, streak 🔥, rang ⭐
+  - Navigation tabs filtrée selon le profil actif
+  - Historique des conversations avec bouton "+ Nouveau" et info date/coût
+  - Bouton "Changer de profil" en bas du drawer
+  - Bouton Recherche et Réglages
+  - Affichage du budget mensuel restant
+  - Backdrop semi-transparent avec fermeture au tap
+- **`getVisibleTabs(pid)`** : filtre les onglets Zya et Zélie — masqués sur les profils parents
+- **`OPEN_DRAWER` / `CLOSE_DRAWER`** : reducer actions + état `showMobileDrawer`
+- **Firebase sync complète** ☁️ : synchronisation de 11 clés de réglages famille entre appareils
+  - `SHARED_SETTINGS_KEYS` : apiKey, modèles, budgets, limites, plages horaires, objectifs, PIN…
+  - `cloudSaveConfig()` / `cloudWatchConfig()` : push/watch en temps réel
+  - Anti-boucle via signatures JSON (`lastPushedCfg` / `lastReceivedCfg`)
+  - Toast "☁️ Réglages famille synchronisés !" au premier chargement sur un nouvel appareil
+- **Catalogue image OpenRouter complet** : picker de modèle image depuis l'API live (flag `imageGen` via `architecture.modality`)
+- **Suppression conversations** : bouton ✕ hover-reveal dans le sidebar avec confirmation 2 étapes
+
+### Modifié
+- `Layout` : suppression du `paddingBottom: 56px`, `<MobileNav>` → `<MobileDrawer>`
+- `ChatHeader` burger : `SET_PROFILE null` → `OPEN_DRAWER` (ne déconnecte plus !)
+- `Sidebar` desktop : utilise `getVisibleTabs(state.profile)`
+
+### Technique
+- Version : `1.18` — SW cache : `ricard-ai-v18`
+
+---
+
 ## [1.17] — 2026-05-11 · Sprint 4 — Génération & Visualisation d'Images
 
 ### Ajouté
