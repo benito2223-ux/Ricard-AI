@@ -1958,6 +1958,61 @@ function timeAgo(ts) {
   return `${Math.floor(d/86400000)}j`;
 }
 
+// ─── Conversation Item (sidebar) ─────────────────────────────
+function ConvItem({ c, activeId, tabId, dispatch }) {
+  const [hovered, setHovered]     = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
+
+  const select = () => dispatch({ type:'SELECT_CONV', payload:{ tabId, convId:c.id } });
+  const pin    = e => { e.preventDefault(); dispatch({ type:'TOGGLE_PIN', payload:{ tabId, convId:c.id } }); };
+  const del    = e => {
+    e.stopPropagation();
+    if (confirmDel) {
+      dispatch({ type:'DELETE_CONV', payload:{ tabId, convId:c.id } });
+    } else {
+      setConfirmDel(true);
+      setTimeout(() => setConfirmDel(false), 2000); // reset après 2s
+    }
+  };
+
+  return (
+    <div
+      style={{ position:'relative', marginBottom:2 }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => { setHovered(false); setConfirmDel(false); }}>
+      {/* Bouton principal conversation */}
+      <button
+        onClick={select}
+        onContextMenu={pin}
+        title="Clic droit pour épingler/désépingler"
+        style={{ display:'block', width:'100%', padding:'6px 28px 6px 8px', borderRadius:6, background: c.id===activeId ? 'white' : 'transparent', border: c.id===activeId ? `1px solid #e8e5dc` : '1px solid transparent', cursor:'pointer', textAlign:'left' }}>
+        <div style={{ fontSize:14, fontWeight: c.id===activeId ? 600 : 400, color:'#111', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+          {c.pinned ? '📌 ' : ''}{c.title}
+        </div>
+        <div style={{ fontSize:12, color:'#aaa', marginTop:1 }}>{timeAgo(c.createdAt)} · ${c.totalCost.toFixed(4)}</div>
+      </button>
+      {/* Bouton suppression — visible au hover */}
+      {(hovered || confirmDel) && (
+        <button
+          onClick={del}
+          title={confirmDel ? 'Confirmer la suppression' : 'Supprimer cette conversation'}
+          style={{
+            position:'absolute', top:'50%', right:4, transform:'translateY(-50%)',
+            background: confirmDel ? '#D83025' : '#f1eee5',
+            border: `1.5px solid ${confirmDel ? '#D83025' : '#e0ddd4'}`,
+            borderRadius:4, width:20, height:20, cursor:'pointer',
+            display:'flex', alignItems:'center', justifyContent:'center',
+            fontSize:11, color: confirmDel ? 'white' : '#aaa',
+            fontWeight:700, padding:0, lineHeight:1,
+            transition:'all .15s',
+          }}>
+          {confirmDel ? '✓' : '✕'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function Sidebar({ collapsed, onToggle }) {
   const { state, dispatch } = useApp();
   const profile = getProfile(state.profile);
@@ -2015,13 +2070,7 @@ function Sidebar({ collapsed, onToggle }) {
               return b.createdAt - a.createdAt;
             });
             return sorted.map(c => (
-              <button key={c.id} onClick={() => dispatch({ type:'SELECT_CONV', payload:{ tabId:state.tab, convId:c.id } })}
-                onContextMenu={e => { e.preventDefault(); dispatch({ type:'TOGGLE_PIN', payload:{ tabId:state.tab, convId:c.id } }); }}
-                style={{ display:'block', width:'100%', padding:'6px 8px', borderRadius:6, background: c.id===activeId ? 'white' : 'transparent', border: c.id===activeId ? `1px solid #e8e5dc` : '1px solid transparent', cursor:'pointer', textAlign:'left', marginBottom:2 }}
-                title="Clic droit pour épingler/désépingler">
-                <div style={{ fontSize:14, fontWeight: c.id===activeId ? 600 : 400, color:C.ink, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{c.pinned ? '📌 ' : ''}{c.title}</div>
-                <div style={{ fontSize:12, color:'#aaa', marginTop:1 }}>{timeAgo(c.createdAt)} · ${c.totalCost.toFixed(4)}</div>
-              </button>
+              <ConvItem key={c.id} c={c} activeId={activeId} tabId={state.tab} dispatch={dispatch} />
             ));
           })()}
         </div>
