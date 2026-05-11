@@ -4484,17 +4484,18 @@ function ArtifactPanel() {
 // ─── Mobile Drawer ────────────────────────────────────────────
 function MobileDrawer() {
   const { state, dispatch } = useApp();
+  // ⚠️ Aucun hook après ce point — pas de useState/useEffect après le return null
   if (!state.showMobileDrawer) return null;
 
   const pid      = state.profile;
   const profile  = getProfile(pid);
   const tabs     = getVisibleTabs(pid);
-  const activeTab = tabs.find(t => t.id === state.tab) || tabs[0];
-  // Onglet affiché dans le drawer (peut être différent du tab global si on navigue)
-  const [drawerTab, setDrawerTab] = React.useState(state.tab);
-  const dtState  = state.tabs[drawerTab];
-  const convs    = dtState?.convs || [];
-  const activeId = dtState?.activeId;
+  // Onglet actif : utilise state.tab directement (pas de useState local pour éviter
+  // la violation des Rules of Hooks avec le return null conditionnel ci-dessus)
+  const curTab   = tabs.find(t => t.id === state.tab) ? state.tab : (tabs[0]?.id || 'chat');
+  const tabState = state.tabs[curTab];
+  const convs    = tabState?.convs || [];
+  const activeId = tabState?.activeId;
   const streak   = getStreak(pid);
   const xp       = getXP(pid);
   const rank     = getRank(xp);
@@ -4502,13 +4503,13 @@ function MobileDrawer() {
   const overBudget = state.monthCost > budget * 0.8;
 
   const close   = () => dispatch({ type:'CLOSE_DRAWER' });
-  const goTab   = id => { setDrawerTab(id); dispatch({ type:'SET_TAB', payload:id }); };
+  const goTab   = id => dispatch({ type:'SET_TAB', payload:id }); // reste dans le drawer
   const goConv  = id => {
-    dispatch({ type:'SELECT_CONV', payload:{ tabId:drawerTab, convId:id } });
+    dispatch({ type:'SELECT_CONV', payload:{ tabId:curTab, convId:id } });
     close();
   };
   const newConv = () => {
-    dispatch({ type:'NEW_CONV', payload:{ tabId:drawerTab } });
+    dispatch({ type:'NEW_CONV', payload:{ tabId:curTab } });
     close();
   };
 
@@ -4518,7 +4519,7 @@ function MobileDrawer() {
     return b.createdAt - a.createdAt;
   });
 
-  const accent = tabs.find(t => t.id === drawerTab)?.color || C.orange;
+  const accent = tabs.find(t => t.id === curTab)?.color || C.orange;
 
   return (
     <>
@@ -4574,7 +4575,7 @@ function MobileDrawer() {
           display:'flex', gap:6, padding:'8px 10px',
           scrollbarWidth:'none' }}>
           {tabs.map(t => {
-            const active = drawerTab === t.id;
+            const active = curTab === t.id;
             return (
               <button key={t.id} onClick={() => goTab(t.id)}
                 style={{ flexShrink:0, display:'flex', alignItems:'center', gap:5,
