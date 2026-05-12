@@ -135,14 +135,16 @@ const _lsSet = (k, v) => { try { localStorage.setItem(PFX_LS+k, JSON.stringify(v
 // Tous les appareils de la famille se configurent automatiquement.
 // Laisser null → configuration manuelle via Réglages.
 // ══════════════════════════════════════════════════════════════
-const FIREBASE_CONFIG = null;
-// Exemple : { apiKey:"AIzaSy...", authDomain:"xxx.firebaseapp.com",
-//             projectId:"xxx", storageBucket:"xxx.appspot.com",
-//             messagingSenderId:"123456", appId:"1:123:web:abc" }
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBVEkDeury0hdwxq544_8LRcKYKukokE90",
+  authDomain: "ricard-ai.firebaseapp.com",
+  projectId: "ricard-ai",
+  storageBucket: "ricard-ai.firebasestorage.app",
+  messagingSenderId: "677417258497",
+  appId: "1:677417258497:web:76515a9d85038e9af07a00",
+};
 
-const FAMILY_ID_HARDCODED = null;
-// Exemple : "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-// Génère un UUID sur https://www.uuidgenerator.net/
+const FAMILY_ID_HARDCODED = "f41511fd-67ab-4a85-89f3-8178708d73b3";
 
 // ── Family ID (partagé entre appareils) ───────────────────────
 function getFamilyId() {
