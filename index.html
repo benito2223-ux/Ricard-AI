@@ -388,7 +388,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.27';
+const APP_VERSION = '1.28';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -1948,6 +1948,22 @@ function ProfileSelector() {
   const { state, dispatch } = useApp();
   const isMobile = useIsMobile();
   const [blocked, setBlocked] = useState(null); // { pid, start, end }
+
+  // Auto-login sur le profil par défaut de cet appareil
+  useEffect(() => {
+    const defaultPid = lsGet('ricard_default_profile', null);
+    if (!defaultPid) return;
+    const p = getProfile(defaultPid);
+    if (!p) return;
+    if (p.isKid) {
+      const hours = state.settings.accessHours?.[defaultPid];
+      if (!isInAccessHours(hours)) return; // hors plage horaire → pas d'auto-login
+    }
+    const codes = state.settings.profileCodes || {};
+    const code = codes[defaultPid] || (p.admin ? state.settings.adminPin : '');
+    if (code) { dispatch({ type:'SHOW_PIN_ENTRY', payload: defaultPid }); }
+    else { dispatch({ type:'SET_PROFILE', payload: defaultPid }); }
+  }, []); // une seule fois au montage
   const budgets = state.settings.budgets || {};
   const totalBudget = Object.values(budgets).reduce((a,b) => a+b, 0);
   const costs = PROFILES.reduce((a, p) => { a[p.id] = loadMonthCost(p.id); return a; }, {});
@@ -2799,6 +2815,8 @@ function InputArea({ tabId, placeholder }) {
   const abortRef = useRef(null);
   const fileRef = useRef(null);
   const cameraRef = useRef(null);
+  const [showPlusMenu, setShowPlusMenu] = useState(false);
+  const plusMenuRef = useRef(null);
 
   // ── Voice input ──
   const onVoiceResult = useCallback((transcript) => {
@@ -2897,6 +2915,7 @@ function InputArea({ tabId, placeholder }) {
     sendMessage({ tabId, content: text.trim(), attachments, abortRef });
     setText('');
     setAttachments([]);
+    setShowPlusMenu(false);
     if (taRef.current) taRef.current.style.height = 'auto';
   }, [text, attachments, state.streaming, imgGenerating, imageMode, hasKey, tabId, sendMessage, dispatch, state.settings]);
 
@@ -2959,38 +2978,68 @@ function InputArea({ tabId, placeholder }) {
           </div>
         )}
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'6px 10px 8px', gap:8 }}>
-          <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-            {/* Bouton mode image 🎨 */}
-            <button
-              onClick={() => setImageMode(v => !v)}
-              title={imageMode ? 'Revenir au chat texte' : 'Générer une illustration'}
-              style={{ background: imageMode ? '#7c3aed' : '#f1eee5', border:`1px solid ${imageMode ? '#7c3aed' : C.faint}`, borderRadius:20, padding:'3px 10px', fontSize:14, cursor:'pointer', color: imageMode ? 'white' : '#555', display:'flex', alignItems:'center', gap:3, flexShrink:0, transition:'all .15s' }}>
-              🎨
-            </button>
-            {/* Attach + Camera buttons (masqués en mode image) */}
-            {!imageMode && (
+          <div style={{ display:'flex', gap:6, alignItems:'center', position:'relative' }}>
+
+            {/* ── MOBILE : mic + bouton (+) ── */}
+            {isMobile ? (
               <>
-                <button onClick={() => fileRef.current?.click()} title="Joindre image ou PDF"
-                  style={{ background: attachments.length ? C.blue : '#f1eee5', border:`1px solid ${attachments.length ? C.blue : C.faint}`, borderRadius:20, padding:'3px 10px', fontSize:14, cursor:'pointer', color: attachments.length ? 'white' : '#555', display:'flex', alignItems:'center', gap:3, flexShrink:0 }}>
-                  📎{attachments.length > 0 && <span style={{ fontSize:11, fontWeight:700 }}>{attachments.length}</span>}
+                {/* Mic */}
+                {voiceSupported && (
+                  <button onClick={toggleVoice} className={listening ? 'mic-active' : ''}
+                    title={listening ? 'Arrêter' : 'Parler'}
+                    style={{ background: listening ? C.red : '#f1eee5', border:`1px solid ${listening ? C.red : C.faint}`, borderRadius:'50%', width:38, height:38, cursor:'pointer', color: listening ? 'white' : '#666', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0, transition:'background .2s' }}>
+                    🎤
+                  </button>
+                )}
+                {/* Bouton (+) */}
+                <div ref={plusMenuRef} style={{ position:'relative' }}>
+                  <button onClick={() => setShowPlusMenu(v => !v)}
+                    style={{ background: showPlusMenu ? C.ink : '#f1eee5', border:`2px solid ${showPlusMenu ? C.ink : C.faint}`, borderRadius:'50%', width:38, height:38, cursor:'pointer', color: showPlusMenu ? 'white' : '#666', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, fontWeight:300, flexShrink:0, transition:'all .15s', lineHeight:1 }}>
+                    {showPlusMenu ? '×' : '+'}
+                  </button>
+                  {/* Menu (+) */}
+                  {showPlusMenu && (
+                    <div style={{ position:'absolute', bottom:46, left:0, background:'white', border:`3px solid ${C.ink}`, borderRadius:'var(--pc-radius-2)', boxShadow:`4px 4px 0 ${C.ink}`, padding:'6px 0', minWidth:170, zIndex:50 }}>
+                      <button onClick={() => { cameraRef.current?.click(); setShowPlusMenu(false); }}
+                        style={{ width:'100%', textAlign:'left', padding:'10px 16px', background:'none', border:'none', cursor:'pointer', fontSize:15, display:'flex', alignItems:'center', gap:10, color:C.ink }}>
+                        <span>📷</span><span>Prendre une photo</span>
+                      </button>
+                      <button onClick={() => { fileRef.current?.click(); setShowPlusMenu(false); }}
+                        style={{ width:'100%', textAlign:'left', padding:'10px 16px', background:'none', border:'none', cursor:'pointer', fontSize:15, display:'flex', alignItems:'center', gap:10, color:C.ink, borderTop:`1px solid #f0ede4` }}>
+                        <span>📎</span><span style={{ display:'flex', alignItems:'center', gap:6 }}>Joindre un fichier{attachments.length > 0 && <span style={{ fontSize:11, background:C.blue, color:'white', borderRadius:999, padding:'1px 6px', fontWeight:700 }}>{attachments.length}</span>}</span>
+                      </button>
+                      <button onClick={() => { setImageMode(v => !v); setShowPlusMenu(false); }}
+                        style={{ width:'100%', textAlign:'left', padding:'10px 16px', background: imageMode ? '#f3e8ff' : 'none', border:'none', cursor:'pointer', fontSize:15, display:'flex', alignItems:'center', gap:10, color: imageMode ? '#7c3aed' : C.ink, borderTop:`1px solid #f0ede4` }}>
+                        <span>🎨</span><span>{imageMode ? '✓ Mode illustration actif' : 'Générer une illustration'}</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {/* Badge attachements si fermé */}
+                {!showPlusMenu && attachments.length > 0 && (
+                  <span style={{ fontSize:11, background:C.blue, color:'white', borderRadius:999, padding:'1px 7px', fontWeight:700, marginLeft:-4 }}>{attachments.length}</span>
+                )}
+              </>
+            ) : (
+              /* ── DESKTOP : boutons classiques ── */
+              <>
+                <button onClick={() => setImageMode(v => !v)} title={imageMode ? 'Revenir au chat' : 'Générer une illustration'}
+                  style={{ background: imageMode ? '#7c3aed' : '#f1eee5', border:`1px solid ${imageMode ? '#7c3aed' : C.faint}`, borderRadius:20, padding:'3px 10px', fontSize:14, cursor:'pointer', color: imageMode ? 'white' : '#555', display:'flex', alignItems:'center', gap:3, flexShrink:0 }}>
+                  🎨
                 </button>
-                {isMobile && (
-                  <button onClick={() => cameraRef.current?.click()} title="Prendre une photo"
-                    style={{ background:'#f1eee5', border:`1px solid ${C.faint}`, borderRadius:20, padding:'3px 10px', fontSize:14, cursor:'pointer', color:'#555', flexShrink:0 }}>
-                    📷
+                {!imageMode && (
+                  <button onClick={() => fileRef.current?.click()} title="Joindre image ou PDF"
+                    style={{ background: attachments.length ? C.blue : '#f1eee5', border:`1px solid ${attachments.length ? C.blue : C.faint}`, borderRadius:20, padding:'3px 10px', fontSize:14, cursor:'pointer', color: attachments.length ? 'white' : '#555', display:'flex', alignItems:'center', gap:3, flexShrink:0 }}>
+                    📎{attachments.length > 0 && <span style={{ fontSize:11, fontWeight:700 }}>{attachments.length}</span>}
+                  </button>
+                )}
+                {voiceSupported && !imageMode && (
+                  <button onClick={toggleVoice} className={listening ? 'mic-active' : ''} title={listening ? 'Arrêter' : 'Parler'}
+                    style={{ background: listening ? C.red : '#f1eee5', border:`1px solid ${listening ? C.red : C.faint}`, borderRadius:'50%', width:32, height:32, cursor:'pointer', color: listening ? 'white' : '#888', display:'flex', alignItems:'center', justifyContent:'center', fontSize:15, flexShrink:0 }}>
+                    🎤
                   </button>
                 )}
               </>
-            )}
-            {/* Mic button */}
-            {voiceSupported && !imageMode && (
-              <button
-                onClick={toggleVoice}
-                className={listening ? 'mic-active' : ''}
-                title={listening ? 'Arrêter la reconnaissance vocale' : 'Parler'}
-                style={{ background: listening ? C.red : '#f1eee5', border:`1px solid ${listening ? C.red : C.faint}`, borderRadius:'50%', width: isMobile ? 40 : 32, height: isMobile ? 40 : 32, cursor:'pointer', color: listening ? 'white' : '#888', display:'flex', alignItems:'center', justifyContent:'center', fontSize: isMobile ? 18 : 15, flexShrink:0, transition:'background .2s,border-color .2s' }}>
-                🎤
-              </button>
             )}
             {/* Sélecteur modèle — texte ou image */}
             {imageMode ? (
@@ -4656,6 +4705,25 @@ function Settings() {
           <div style={{ fontSize:13, color:'#555', background:'#f7f4ec', padding:'10px 12px', borderRadius:8 }}>
             💡 Conseil : Haiku pour les enfants ($0.8/M), Sonnet pour les tâches complexes.
           </div>
+          {/* ── 📱 Cet appareil ─────────────────────────── */}
+          <section>
+            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>📱 Cet appareil</div>
+            <div style={{ fontSize:12, color:'#aaa', marginBottom:10 }}>Profil ouvert automatiquement au démarrage sur ce téléphone / ordinateur (non partagé entre appareils).</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <span style={{ fontSize:13, flex:1 }}>Profil par défaut</span>
+                <select value={lsGet('ricard_default_profile', '')} onChange={e => {
+                  const val = e.target.value;
+                  if (val) lsSet('ricard_default_profile', val);
+                  else localStorage.removeItem('ricard_default_profile');
+                }} style={{ padding:'6px 10px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:13, background:C.paper, outline:'none', cursor:'pointer' }}>
+                  <option value="">— Aucun (sélecteur au démarrage) —</option>
+                  {PROFILES.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+            </div>
+          </section>
+
           <div style={{ fontSize:11, color:'#bbb', textAlign:'center', padding:'4px 0' }}>Ricard AI v{APP_VERSION}</div>
         </div>
         <div style={{ padding:'12px 18px', borderTop:`1.5px solid #e8e5dc`, display:'flex', gap:10 }}>
