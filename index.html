@@ -388,7 +388,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.30';
+const APP_VERSION = '1.31';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -1964,13 +1964,15 @@ function PinEntry() {
 }
 
 // ─── Profile Selector ────────────────────────────────────────
-function ProfileSelector() {
+function ProfileSelector({ skipAutoLogin = false }) {
   const { state, dispatch } = useApp();
   const isMobile = useIsMobile();
   const [blocked, setBlocked] = useState(null); // { pid, start, end }
 
   // Auto-login sur le profil par défaut de cet appareil
+  // skipAutoLogin=true quand on vient du bouton "Changer de profil" (évite la boucle)
   useEffect(() => {
+    if (skipAutoLogin) return;
     const defaultPid = lsGet('ricard_default_profile', null);
     if (!defaultPid) return;
     const p = getProfile(defaultPid);
@@ -1991,7 +1993,7 @@ function ProfileSelector() {
   const msgsToday = pid => lsGet('daily_' + pid + '_' + dateKey(), 0);
 
   return (
-    <div style={{ minHeight:'100dvh', overflowY:'auto', background:C.paper, display:'flex', flexDirection:'column', alignItems:'center', justifyContent: isMobile ? 'flex-start' : 'center', fontFamily:'var(--pc-font-body)', padding: isMobile ? '24px 16px' : 40, paddingTop: isMobile ? 'max(32px, calc(env(safe-area-inset-top, 0px) + 20px))' : '40px', paddingBottom: isMobile ? 'max(32px, calc(env(safe-area-inset-bottom, 0px) + 20px))' : '40px' }}>
+    <div style={{ minHeight:'100dvh', overflowY:'auto', background:C.paper, display:'flex', flexDirection:'column', alignItems:'center', justifyContent: isMobile ? 'flex-start' : 'center', fontFamily:'var(--pc-font-body)', padding: isMobile ? '0 16px' : 40, paddingTop: isMobile ? 'calc(env(safe-area-inset-top, 44px) + 32px)' : '40px', paddingBottom: isMobile ? 'calc(env(safe-area-inset-bottom, 16px) + 8px)' : '40px' }}>
       <div style={{ marginBottom: isMobile ? 28 : 48, textAlign:'center' }}>
         <div style={{ fontFamily:'var(--pc-font-display)', fontSize: isMobile ? 52 : 72, color:C.ink, textShadow:`4px 4px 0 ${C.orange}, 8px 8px 0 ${C.yellow}`, lineHeight:1.1 }}>Ricard AI</div>
         <div style={{ marginTop:8, fontSize: isMobile ? 15 : 17, color:C.muted, fontFamily:'var(--pc-font-body)' }}>Qui utilise l'IA ce soir ?</div>
@@ -5393,7 +5395,7 @@ function PersonalizedSplash({ pid, onChangeProfile }) {
   };
 
   return (
-    <div style={{ height:'100dvh', background:C.paper, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', fontFamily:'var(--pc-font-body)', padding:'32px 24px', paddingTop:'max(40px, calc(env(safe-area-inset-top,0px) + 24px))', paddingBottom:'max(40px, calc(env(safe-area-inset-bottom,0px) + 24px))', position:'relative', overflow:'hidden', gap: isMobile ? 20 : 28 }}>
+    <div style={{ height:'100dvh', background:C.paper, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', fontFamily:'var(--pc-font-body)', padding:'0 24px', paddingTop:'calc(env(safe-area-inset-top, 44px) + 28px)', paddingBottom:'calc(env(safe-area-inset-bottom, 16px) + 8px)', position:'relative', overflow:'hidden', gap: isMobile ? 18 : 28 }}>
 
       {/* Fond couleur profil en haut */}
       <div style={{ position:'absolute', top:0, left:0, right:0, height:'50%', background:`linear-gradient(180deg,${profile.color}55 0%,transparent 100%)`, pointerEvents:'none' }} />
@@ -5488,7 +5490,7 @@ function App() {
         </>
       );
     }
-    return <ProfileSelector />;
+    return <ProfileSelector skipAutoLogin={forceSelector} />;
   }
 
   return (
