@@ -1152,7 +1152,7 @@ function buildState(pid) {
   const tabs = {};
   TABS.forEach(t => { tabs[t] = initTab(pid, t, settings); });
   return {
-    profile: pid, tab: 'chat', tabs,
+    profile: pid, tab: (pid === 'zya' || pid === 'zelie') ? pid : 'chat', tabs,
     settings,
     monthCost: loadMonthCost(pid),
     streaming: false,
@@ -2024,10 +2024,12 @@ const TAB_DEFS = [
 // Filtre les onglets selon le profil actif
 function getVisibleTabs(pid) {
   const profile = getProfile(pid);
+  const isKid = pid === 'zya' || pid === 'zelie';
   return TAB_DEFS.filter(t => {
-    if (!t.kidOnly) return true;              // tabs généraux : toujours visibles
-    if (profile?.admin) return false;         // parents : masquer les onglets enfants
-    return t.kidOnly === pid;                 // enfant : seulement son propre onglet
+    if (t.id === 'chat' && isKid) return false;  // enfants : Chat générique masqué (doublon avec Nova/Pixel)
+    if (!t.kidOnly) return true;                  // tabs généraux : toujours visibles
+    if (profile?.admin) return false;             // parents : masquer les onglets enfants
+    return t.kidOnly === pid;                     // enfant : seulement son propre onglet
   });
 }
 
