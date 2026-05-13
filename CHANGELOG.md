@@ -5,6 +5,148 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [1.30] — 2026-05-13 · Humeur du jour + fixes UX critiques
+
+### Ajouté
+- **🌡️ Humeur du jour** pour Zya et Zélie : sélecteur 5 émojis affiché chaque matin (🤩 Génial · 😊 Bien · 😐 Bof · 😔 Pas top · 😤 Grognon)
+  - Stocké par date en localStorage (`mood_{pid}_{date}`)
+  - Disparaît une fois choisi, revient le lendemain automatiquement
+  - L'humeur choisie s'affiche en mini-emoji dans l'en-tête (à côté du streak)
+- **Injection humeur dans le system prompt** : Nova et Pixel adaptent leur ton si l'humeur est basse (plus doux, plus encourageants)
+- **Vue humeurs dans Famille → Suivi** : Papa/Maman voient en temps réel l'humeur du jour de chaque enfant
+- Composant `MoodPicker` + helpers `getMoodToday()` / `setMoodToday()` / constante `MOODS`
+
+### Modifié
+- **Avatar splash agrandi** : 140 → 180px mobile, 180 → 220px desktop
+- **Bouton Profil supprimé** du menu latéral mobile (la sélection se fait dans Réglages → 📱 Cet appareil)
+- **En-têtes ZyaTab/ZelieTab compacts** sur mobile : icônes seules, labels texte visibles uniquement sur desktop
+- **Fix critique InputArea** : `paddingBottom: max(10px, env(safe-area-inset-bottom) + 6px)` — zone de texte toujours accessible sur iPhone
+- **Zone vide scrollable** sur les onglets enfants : `overflowY:auto` + `justifyContent:flex-start` — plus de débordement sur petits écrans
+
+### Technique
+- Version : `1.30` — SW cache : `ricard-ai-v30`
+
+---
+
+## [1.29] — 2026-05-13 · Splash personnalisé au démarrage
+
+### Ajouté
+- **Composant `PersonalizedSplash`** : page d'accueil plein écran affichée si un profil par défaut est configuré sur l'appareil
+  - Fond dégradé aux couleurs du profil (haut 50% + bas 30%)
+  - Grand avatar centré (140px mobile / 180px desktop) avec badge rang en surimpression
+  - Nom en Permanent Marker 52–66px avec ombre colorée
+  - Badges streak 🔥 et rang si actifs
+  - Bloc objectif du jour si défini
+  - Barre budget mensuel
+  - Message de blocage horaire si hors plage
+  - Bouton "C'est parti 🚀" punk avec couleur du profil + animation hover
+  - Lien "Changer de profil" discret en bas
+- **`App()` mis à jour** : lit `ricard_default_profile` au démarrage, affiche `PersonalizedSplash` si trouvé, sinon `ProfileSelector`
+- **`forceSelector` state** dans `App` pour permettre le changement de profil depuis le splash
+
+### Technique
+- Version : `1.29` — SW cache : `ricard-ai-v29`
+
+---
+
+## [1.28] — 2026-05-13 · Profil par défaut par appareil + InputArea redesign mobile
+
+### Ajouté
+- **Option "Profil par défaut"** dans Réglages → 📱 Cet appareil : chaque device choisit son profil (stocké en localStorage hors `SHARED_SETTINGS_KEYS`, donc non synchronisé entre appareils)
+- **Auto-login au démarrage** : `ProfileSelector` lit `ricard_default_profile` et dispatch `SET_PROFILE` automatiquement via `useEffect` sur mount
+- **Bouton 📷 Appareil photo** sur mobile : `capture="environment"` sur un input caché dédié (`cameraRef`), réutilise `handleFiles`
+- **Menu (+) sur mobile** : remplace les boutons classiques par un bouton circulaire `+` qui ouvre un menu positionné au-dessus avec : 📷 Prendre une photo · 📎 Joindre un fichier · 🎨 Générer une illustration
+- Badge rouge sur le `+` si des pièces jointes sont déjà attachées
+
+### Modifié
+- `InputArea` : sur mobile, seuls 🎤 Mic + (+) Menu sont visibles — InputArea plus aérée
+- `Settings` : nouvelle section 📱 Cet appareil avec dropdown profil par défaut
+- `ProfileSelector` : `useEffect` d'auto-login monté après tous les hooks
+
+### Technique
+- Version : `1.28` — SW cache : `ricard-ai-v28`
+
+---
+
+## [1.27] — 2026-05-12 · Corrections layout mobile & avatars compacts
+
+### Modifié
+- **Cartes Zya/Zélie compactes** dans `ProfileSelector` sur mobile : avatar 56px, font 18px, une seule rangée de badges (âge + streak + rang)
+- **ProfileSelector scrollable** : `overflowY:'auto'` + `justifyContent: isMobile ? 'flex-start' : 'center'` + `paddingBottom:32px`
+- Toutes les cartes profil visibles sans scroll forcé même sur petit écran
+
+### Technique
+- Version : `1.27` — SW cache : `ricard-ai-v27`
+
+---
+
+## [1.26] — 2026-05-12 · PWA fullscreen + icônes natives iOS/Android
+
+### Ajouté
+- **Script Python `make_icons.py`** : génère icon-192.png, icon-512.png, icon-180.png, icon-167.png, icon-152.png, favicon.png depuis `Logo_Ricard_AI.png` avec Pillow (crop carré centré + resize LANCZOS)
+- **`apple-touch-icon`** 180px dans `<head>` pour iOS
+- **`apple-touch-icon`** 152px (iPad) et 167px (iPad Pro) dans `<head>`
+- **`<link rel="icon">`** pointant sur favicon.png (48px)
+
+### Modifié
+- `manifest.json` : chaque icône a désormais **deux entrées séparées** `purpose:"any"` et `purpose:"maskable"` (fini le combined `"any maskable"` rejeté par certains parseurs)
+- Résout le bug "l'app ne s'affiche plus en plein écran / barre d'adresse visible après réinstallation"
+
+### Technique
+- Version : `1.26` — SW cache : `ricard-ai-v26`
+
+---
+
+## [1.25] — 2026-05-12 · Avatars photo par profil
+
+### Ajouté
+- **Script Python `resize_avatars.py`** : crop carré + resize 200×200 + JPEG quality 82 → ~17 KB par avatar (source 2.5 MB PNG)
+- **Avatars photo** intégrés : Avatar_Benjamin.jpg, Avatar_Chloe.jpg, Avatar_Zya.jpg, Avatar_Zelie.jpg
+- Champ `avatar` dans chaque entrée `PROFILES` (`Avatar_Prenom.jpg`)
+- Composant `ProfileAvatar` : priorité à l'image `<img>` si `profile.avatar` défini, fallback sur le cercle coloré initiale
+
+### Technique
+- Version : `1.25` — SW cache : `ricard-ai-v25`
+
+---
+
+## [1.24] — 2026-05-12 · Sprint 6 — 7 fonctionnalités avancées
+
+### Ajouté
+- **📌 Mémoire persistante** : bouton dans les actions de message pour sauvegarder un résumé dans `profileContext` (Réglages → Mémoire). Modal de confirmation avec aperçu.
+- **👁️ Vue parents** dans FamilyTab : onglet "Suivi" (admin uniquement) — lecture seule des conversations récentes de Zya et Zélie avec `<details>` dépliables
+- **🔊 TTS toujours visible pour Zélie** : bouton lecture audio rose en bas de chaque bulle assistant, sans survol requis
+- **📇 Flashcards Zya** : bouton "📇 Fiches" en mode Étude (si messages > 0) — appel OpenRouter JSON, modal flip-cards interactives avec animation CSS `@keyframes flip-in`
+- **🎉 Confetti milestones** : animation CSS 70 particules (`@keyframes confetti-fall`) auto-dismiss 4,5s, déclenchée par `SHOW_CONFETTI` / `HIDE_CONFETTI`
+- **📋 Résumé WhatsApp** : bouton dans les actions de message — appel OpenRouter non-streamé, 3 bullets copiés dans le presse-papier
+- **📄 Export PDF** : `window.open` + `document.write` + `window.print()` — mise en page propre avec styles inline, pas de librairie externe
+
+### Modifié
+- `buildState` : `tab` par défaut = `pid` pour Zya/Zélie (route directe vers leur agent)
+- `getVisibleTabs` : filtre l'onglet `chat` pour les profils enfants (doublon avec Nova/Pixel)
+- `ChatThread` : actions hover enrichies (📌 Mémoire · 📄 PDF · 📋 WA) ; return wrappé dans `<>...</>` (correction page blanche)
+- `FamilyTab` : troisième onglet "👁️ Suivi"
+
+### Technique
+- Version : `1.24` — SW cache : `ricard-ai-v24`
+
+---
+
+## [1.19] — 2026-05-11 · Suggestions ZelieTab complètes & suppression onglet Chat enfants
+
+### Ajouté
+- **Suggestions mode Jeu** pour Zélie : 6 propositions adaptées à 9 ans (histoires, devinettes, contes, dessin de mots, animaux, quiz)
+- **Suggestions mode Devoirs** pour Zélie : 6 propositions scolaires CE2/CM (texte, maths, géographie, explication simple, rédaction, pourquoi)
+
+### Modifié
+- `getVisibleTabs(pid)` : masque l'onglet `chat` pour `zya` et `zelie` — doublon avec Nova/Pixel
+- `buildState` : `tab` initial = `pid` pour les profils enfants (arrive directement sur leur agent)
+
+### Technique
+- Version : `1.19` — SW cache : `ricard-ai-v19`
+
+---
+
 ## [1.18] — 2026-05-11 · Sprint 5 — Refonte UX Mobile & Sync Firebase complète
 
 ### Ajouté
