@@ -388,7 +388,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.25';
+const APP_VERSION = '1.26';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -1962,14 +1962,17 @@ function ProfileSelector() {
         <div style={{ marginTop:4, fontSize:12, color:'#999', fontFamily:'var(--pc-font-body)' }}>v{APP_VERSION}</div>
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: isMobile ? 14 : 24, marginBottom: isMobile ? 28 : 48, width:'100%', maxWidth:700 }}>
+      <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: isMobile ? 12 : 24, marginBottom: isMobile ? 24 : 48, width:'100%', maxWidth:700 }}>
         {PROFILES.map(p => {
           const spent = costs[p.id] || 0;
           const budget = budgets[p.id] || 50;
           const pct = Math.min(100, (spent / budget) * 100);
+          const streak = getStreak(p.id);
+          const rank = getRank(getXP(p.id));
+          const msgsCount = msgsToday(p.id);
+          const hasCode = (state.settings.profileCodes || {})[p.id] || (p.admin && state.settings.adminPin);
           return (
             <button key={p.id} onClick={() => {
-              // Vérification plages horaires (enfants seulement)
               if (p.isKid) {
                 const hours = state.settings.accessHours?.[p.id];
                 if (!isInAccessHours(hours)) {
@@ -1980,49 +1983,37 @@ function ProfileSelector() {
               }
               const codes = state.settings.profileCodes || {};
               const code = codes[p.id] || (p.admin ? state.settings.adminPin : '');
-              if (code) {
-                dispatch({ type:'SHOW_PIN_ENTRY', payload:p.id });
-              } else {
-                dispatch({ type:'SET_PROFILE', payload:p.id });
-              }
+              if (code) { dispatch({ type:'SHOW_PIN_ENTRY', payload:p.id }); }
+              else { dispatch({ type:'SET_PROFILE', payload:p.id }); }
             }}
-              style={{ background:'white', border:`4px solid ${C.ink}`, borderRadius:'var(--pc-radius-1)', padding:'24px 16px', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:10, boxShadow:`var(--pc-shadow)`, transition:'all 0.1s steps(3)', position:'relative' }}
+              style={{ background:'white', border:`4px solid ${C.ink}`, borderRadius:'var(--pc-radius-1)', padding: isMobile ? '14px 10px' : '24px 16px', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap: isMobile ? 6 : 10, boxShadow:`var(--pc-shadow)`, transition:'all 0.1s steps(3)', position:'relative', overflow:'hidden' }}
               onMouseEnter={e => { e.currentTarget.style.transform='translate(-4px,-4px)'; e.currentTarget.style.boxShadow='var(--pc-shadow-hover)'; e.currentTarget.style.background=C.yellow; }}
               onMouseLeave={e => { e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow='var(--pc-shadow)'; e.currentTarget.style.background='white'; }}
             >
-              {(() => {
-                const codes = state.settings.profileCodes || {};
-                const hasCode = codes[p.id] || (p.admin && state.settings.adminPin);
-                return hasCode ? <div style={{ position:'absolute', top:10, right:10, fontSize:14 }}>🔒</div> : null;
-              })()}
-              <ProfileAvatar profile={p} size={72} />
-              <div style={{ fontFamily:'var(--pc-font-display)', fontSize:22, color:C.ink }}>{p.name}</div>
-              {p.age && <div style={{ fontSize:13, color:C.muted, background:C.shade, padding:'3px 9px', borderRadius:999, border:`1px solid ${C.faint}` }}>{p.age} ans</div>}
-              {/* Streak + Rang */}
-              {(() => {
-                const streak = getStreak(p.id);
-                const rank = getRank(getXP(p.id));
-                return (
-                  <div style={{ display:'flex', gap:5, flexWrap:'wrap', justifyContent:'center' }}>
-                    {streak > 0 && <span style={{ fontSize:11, background:'#fff7e6', padding:'2px 7px', borderRadius:999, border:`1px solid #fbbf24`, color:'#b45309' }}>🔥 {streak}j</span>}
-                    <span style={{ fontSize:11, background:'#f7f4ec', padding:'2px 7px', borderRadius:999, border:`1px solid #e8e5dc`, color:'#555' }}>{rank.label}</span>
-                  </div>
-                );
-              })()}
+              {hasCode && <div style={{ position:'absolute', top:8, right:8, fontSize:12 }}>🔒</div>}
+              <ProfileAvatar profile={p} size={isMobile ? 56 : 72} />
+              <div style={{ fontFamily:'var(--pc-font-display)', fontSize: isMobile ? 18 : 22, color:C.ink, lineHeight:1 }}>{p.name}</div>
+              {/* Âge + streak + rang sur mobile : compacté sur une ligne */}
+              <div style={{ display:'flex', gap:4, flexWrap:'wrap', justifyContent:'center', alignItems:'center' }}>
+                {p.age && <span style={{ fontSize: isMobile ? 10 : 13, color:C.muted, background:C.shade, padding: isMobile ? '2px 6px' : '3px 9px', borderRadius:999, border:`1px solid ${C.faint}` }}>{p.age} ans</span>}
+                {streak > 0 && <span style={{ fontSize: isMobile ? 10 : 11, background:'#fff7e6', padding: isMobile ? '2px 5px' : '2px 7px', borderRadius:999, border:`1px solid #fbbf24`, color:'#b45309' }}>🔥{streak}</span>}
+                <span style={{ fontSize: isMobile ? 10 : 11, background:'#f7f4ec', padding: isMobile ? '2px 5px' : '2px 7px', borderRadius:999, border:`1px solid #e8e5dc`, color:'#555' }}>{rank.icon || rank.label.split(' ')[0]}</span>
+              </div>
               {/* Blocage horaire */}
               {blocked?.pid === p.id && (
                 <div style={{ position:'absolute', inset:0, background:'rgba(17,17,17,.88)', borderRadius:'var(--pc-radius-1)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:6, padding:12 }}>
                   <div style={{ fontSize:28 }}>⏰</div>
                   <div style={{ fontFamily:'var(--pc-font-display)', fontSize:16, color:C.yellow, textAlign:'center' }}>Hors horaire !</div>
-                  <div style={{ fontSize:12, color:'#aaa', textAlign:'center', fontFamily:'var(--pc-font-body)' }}>{blocked.start} – {blocked.end}</div>
+                  <div style={{ fontSize:12, color:'#aaa', textAlign:'center' }}>{blocked.start} – {blocked.end}</div>
                 </div>
               )}
-              {/* Messages du jour */}
-              {msgsToday(p.id) > 0 && (
-                <div style={{ fontSize:11, color:C.muted, fontFamily:'var(--pc-font-body)' }}>{msgsToday(p.id)} msg aujourd'hui</div>
+              {/* Messages du jour — desktop seulement */}
+              {!isMobile && msgsCount > 0 && (
+                <div style={{ fontSize:11, color:C.muted }}>{msgsCount} msg aujourd'hui</div>
               )}
+              {/* Barre budget */}
               <div style={{ width:'100%' }}>
-                <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:C.muted, marginBottom:3 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:C.muted, marginBottom:3 }}>
                   <span>${spent.toFixed(2)}</span><span>/${budget}</span>
                 </div>
                 <div style={{ height:4, background:C.shade, borderRadius:999, overflow:'hidden', border:`1px solid ${C.faint}` }}>
