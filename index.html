@@ -383,7 +383,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.22';
+const APP_VERSION = '1.23';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -633,10 +633,10 @@ function speedLabel(s) { return ['','⚡','⚡⚡','⚡⚡⚡'][s] || '⚡'; }
 
 // ─── Profiles ────────────────────────────────────────────────
 const PROFILES = [
-  { id:'papa',  name:'Papa',  label:'P', color:C.orange, admin:true,  avatar:'Avatar_Benjamin.png' },
-  { id:'maman', name:'Maman', label:'M', color:C.teal,   admin:true,  avatar:'Avatar_Chloe.png'    },
-  { id:'zya',   name:'Zya',   label:'Z', color:C.purple, age:13, isKid:true, avatar:'Avatar_Zya.png'    },
-  { id:'zelie', name:'Zélie', label:'Z', color:C.pink,   age:9,  isKid:true, avatar:'Avatar_Zelie.png'  },
+  { id:'papa',  name:'Papa',  label:'P', color:C.orange, admin:true,  avatar:'Avatar_Benjamin.jpg' },
+  { id:'maman', name:'Maman', label:'M', color:C.teal,   admin:true,  avatar:'Avatar_Chloe.jpg'    },
+  { id:'zya',   name:'Zya',   label:'Z', color:C.purple, age:13, isKid:true, avatar:'Avatar_Zya.jpg'    },
+  { id:'zelie', name:'Zélie', label:'Z', color:C.pink,   age:9,  isKid:true, avatar:'Avatar_Zelie.jpg'  },
 ];
 // Helper : rendu d'un avatar profil (photo si dispo, sinon cercle coloré)
 function ProfileAvatar({ profile, size=40, style={} }) {
