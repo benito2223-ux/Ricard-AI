@@ -388,7 +388,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.26';
+const APP_VERSION = '1.27';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -2798,6 +2798,7 @@ function InputArea({ tabId, placeholder }) {
   const taRef = useRef(null);
   const abortRef = useRef(null);
   const fileRef = useRef(null);
+  const cameraRef = useRef(null);
 
   // ── Voice input ──
   const onVoiceResult = useCallback((transcript) => {
@@ -2910,8 +2911,9 @@ function InputArea({ tabId, placeholder }) {
           <button onClick={() => dispatch({ type:'TOGGLE_SETTINGS' })} style={{ background:C.orange, border:'none', borderRadius:6, color:'white', padding:'3px 10px', fontSize:12, cursor:'pointer', fontWeight:600 }}>Configurer →</button>
         </div>
       )}
-      {/* Hidden file input */}
+      {/* Hidden file inputs */}
       <input ref={fileRef} type="file" accept="image/*,.pdf" multiple style={{ display:'none' }} onChange={handleFiles} />
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display:'none' }} onChange={handleFiles} />
 
       <div style={{ border:`4px solid ${C.ink}`, borderRadius:'var(--pc-radius-3)', background:'white', overflow:'hidden', boxShadow:`var(--pc-shadow)` }}>
         {/* Attachment previews */}
@@ -2965,12 +2967,20 @@ function InputArea({ tabId, placeholder }) {
               style={{ background: imageMode ? '#7c3aed' : '#f1eee5', border:`1px solid ${imageMode ? '#7c3aed' : C.faint}`, borderRadius:20, padding:'3px 10px', fontSize:14, cursor:'pointer', color: imageMode ? 'white' : '#555', display:'flex', alignItems:'center', gap:3, flexShrink:0, transition:'all .15s' }}>
               🎨
             </button>
-            {/* Attach button (masqué en mode image) */}
+            {/* Attach + Camera buttons (masqués en mode image) */}
             {!imageMode && (
-              <button onClick={() => fileRef.current?.click()} title="Joindre image ou PDF"
-                style={{ background: attachments.length ? C.blue : '#f1eee5', border:`1px solid ${attachments.length ? C.blue : C.faint}`, borderRadius:20, padding:'3px 10px', fontSize:14, cursor:'pointer', color: attachments.length ? 'white' : '#555', display:'flex', alignItems:'center', gap:3, flexShrink:0 }}>
-                📎{attachments.length > 0 && <span style={{ fontSize:11, fontWeight:700 }}>{attachments.length}</span>}
-              </button>
+              <>
+                <button onClick={() => fileRef.current?.click()} title="Joindre image ou PDF"
+                  style={{ background: attachments.length ? C.blue : '#f1eee5', border:`1px solid ${attachments.length ? C.blue : C.faint}`, borderRadius:20, padding:'3px 10px', fontSize:14, cursor:'pointer', color: attachments.length ? 'white' : '#555', display:'flex', alignItems:'center', gap:3, flexShrink:0 }}>
+                  📎{attachments.length > 0 && <span style={{ fontSize:11, fontWeight:700 }}>{attachments.length}</span>}
+                </button>
+                {isMobile && (
+                  <button onClick={() => cameraRef.current?.click()} title="Prendre une photo"
+                    style={{ background:'#f1eee5', border:`1px solid ${C.faint}`, borderRadius:20, padding:'3px 10px', fontSize:14, cursor:'pointer', color:'#555', flexShrink:0 }}>
+                    📷
+                  </button>
+                )}
+              </>
             )}
             {/* Mic button */}
             {voiceSupported && !imageMode && (
