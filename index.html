@@ -388,7 +388,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.28';
+const APP_VERSION = '1.29';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -5279,14 +5279,139 @@ function Confetti() {
   );
 }
 
+// ─── Splash personnalisé (profil par défaut) ──────────────────
+function PersonalizedSplash({ pid, onChangeProfile }) {
+  const { state, dispatch } = useApp();
+  const isMobile = useIsMobile();
+  const profile = getProfile(pid);
+  const [blocked, setBlocked] = useState(false);
+
+  if (!profile) { onChangeProfile(); return null; }
+
+  const streak  = getStreak(pid);
+  const rank    = getRank(getXP(pid));
+  const goal    = state.settings.dailyGoals?.[pid] || '';
+  const spent   = loadMonthCost(pid);
+  const budget  = state.settings.budgets?.[pid] || 50;
+  const pct     = Math.min(100, (spent / budget) * 100);
+
+  const handleEnter = () => {
+    if (profile.isKid) {
+      const hours = state.settings.accessHours?.[pid];
+      if (!isInAccessHours(hours)) {
+        setBlocked(true);
+        setTimeout(() => setBlocked(false), 3000);
+        return;
+      }
+    }
+    const codes = state.settings.profileCodes || {};
+    const code = codes[pid] || (profile.admin ? state.settings.adminPin : '');
+    if (code) dispatch({ type:'SHOW_PIN_ENTRY', payload: pid });
+    else      dispatch({ type:'SET_PROFILE',    payload: pid });
+  };
+
+  return (
+    <div style={{ height:'100dvh', background:C.paper, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', fontFamily:'var(--pc-font-body)', padding:'32px 24px', paddingTop:'max(40px, calc(env(safe-area-inset-top,0px) + 24px))', paddingBottom:'max(40px, calc(env(safe-area-inset-bottom,0px) + 24px))', position:'relative', overflow:'hidden', gap: isMobile ? 20 : 28 }}>
+
+      {/* Fond couleur profil en haut */}
+      <div style={{ position:'absolute', top:0, left:0, right:0, height:'50%', background:`linear-gradient(180deg,${profile.color}55 0%,transparent 100%)`, pointerEvents:'none' }} />
+      {/* Fond couleur profil en bas (subtil) */}
+      <div style={{ position:'absolute', bottom:0, left:0, right:0, height:'30%', background:`linear-gradient(0deg,${profile.color}22 0%,transparent 100%)`, pointerEvents:'none' }} />
+
+      {/* Logo Ricard AI */}
+      <div style={{ fontFamily:'var(--pc-font-display)', fontSize:14, color:'#bbb', letterSpacing:1, position:'relative' }}>RICARD AI</div>
+
+      {/* Grand avatar */}
+      <div style={{ position:'relative', animation:'fadeIn .4s ease' }}>
+        <ProfileAvatar profile={profile} size={isMobile ? 140 : 180} />
+        {/* Badge rang en surimpression */}
+        <div style={{ position:'absolute', bottom:-6, right:-6, background:'white', border:`3px solid ${C.ink}`, borderRadius:999, padding:'2px 8px', fontSize:12, fontWeight:700, color:C.ink, boxShadow:`2px 2px 0 ${C.ink}` }}>
+          {rank.label.split(' ')[0]}
+        </div>
+      </div>
+
+      {/* Nom */}
+      <div style={{ textAlign:'center', position:'relative' }}>
+        <div style={{ fontFamily:'var(--pc-font-display)', fontSize: isMobile ? 52 : 66, color:C.ink, textShadow:`4px 4px 0 ${profile.color}`, lineHeight:1 }}>
+          {profile.name}
+        </div>
+        {profile.age && <div style={{ fontSize:14, color:C.muted, marginTop:4 }}>{profile.age} ans</div>}
+      </div>
+
+      {/* Streak + rang */}
+      {streak > 0 && (
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap', justifyContent:'center', position:'relative' }}>
+          <span style={{ fontSize:15, background:'#fff7e6', padding:'5px 14px', borderRadius:999, border:`2px solid #fbbf24`, color:'#b45309', fontWeight:700 }}>🔥 {streak} jour{streak > 1 ? 's' : ''} de suite !</span>
+          <span style={{ fontSize:15, background:'#f7f4ec', padding:'5px 14px', borderRadius:999, border:`2px solid ${C.faint}`, color:'#555' }}>{rank.label}</span>
+        </div>
+      )}
+
+      {/* Objectif du jour */}
+      {goal && (
+        <div style={{ background:`${profile.color}22`, border:`2px solid ${profile.color}`, borderRadius:14, padding:'10px 20px', textAlign:'center', maxWidth:340, position:'relative' }}>
+          <span style={{ fontSize:11, fontWeight:700, color:profile.color, textTransform:'uppercase', letterSpacing:.5 }}>🎯 Objectif · </span>
+          <span style={{ fontSize:14, color:C.ink }}>{goal}</span>
+        </div>
+      )}
+
+      {/* Message blocage horaire */}
+      {blocked && (
+        <div style={{ background:'#fee2e2', border:`2px solid #ef4444`, borderRadius:12, padding:'10px 20px', textAlign:'center', color:'#b91c1c', fontSize:14, fontWeight:600 }}>
+          ⏰ Hors de ta plage d'accès !
+        </div>
+      )}
+
+      {/* Budget rapide */}
+      <div style={{ width:'100%', maxWidth:260, position:'relative' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:C.muted, marginBottom:4 }}>
+          <span>Budget ce mois</span><span style={{ fontWeight:600 }}>${spent.toFixed(2)} / ${budget}</span>
+        </div>
+        <div style={{ height:5, background:C.shade, borderRadius:999, overflow:'hidden', border:`1px solid ${C.faint}` }}>
+          <div style={{ height:'100%', width:`${pct}%`, background: pct>80 ? C.red : profile.color, borderRadius:999, transition:'width .4s ease' }} />
+        </div>
+      </div>
+
+      {/* Bouton Entrer */}
+      <button onClick={handleEnter}
+        style={{ background:profile.color, color:C.ink, border:`4px solid ${C.ink}`, borderRadius:'var(--pc-radius-2)', padding: isMobile ? '14px 52px' : '16px 64px', fontFamily:'var(--pc-font-display)', fontSize: isMobile ? 24 : 28, cursor:'pointer', boxShadow:`5px 5px 0 ${C.ink}`, transition:'all 0.1s steps(2)', letterSpacing:.5, position:'relative' }}
+        onMouseEnter={e => { e.currentTarget.style.transform='translate(-3px,-3px)'; e.currentTarget.style.boxShadow='8px 8px 0 '+C.ink; }}
+        onMouseLeave={e => { e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow='5px 5px 0 '+C.ink; }}>
+        C'est parti 🚀
+      </button>
+
+      {/* Changer de profil */}
+      <button onClick={onChangeProfile}
+        style={{ background:'none', border:`1px solid ${C.faint}`, borderRadius:20, cursor:'pointer', fontSize:13, color:C.muted, fontFamily:'inherit', padding:'6px 16px' }}>
+        👥 Changer de profil
+      </button>
+    </div>
+  );
+}
+
 // ─── Root ─────────────────────────────────────────────────────
 function App() {
   const { state } = useApp();
+  const [forceSelector, setForceSelector] = useState(false);
+
   // Portail famille en premier — bloque tout le reste
   if (state.showFamilyGate) return <FamilyGate />;
+
+  if (!state.profile) {
+    const defaultPid = lsGet('ricard_default_profile', null);
+    if (defaultPid && !forceSelector) {
+      return (
+        <>
+          <PersonalizedSplash pid={defaultPid} onChangeProfile={() => setForceSelector(true)} />
+          <PinEntry />
+        </>
+      );
+    }
+    return <ProfileSelector />;
+  }
+
   return (
     <>
-      {state.profile ? <Layout /> : <ProfileSelector />}
+      <Layout />
       <PinEntry />
       <WelcomeOverlay />
       <ToastContainer />
