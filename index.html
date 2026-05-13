@@ -388,7 +388,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.29';
+const APP_VERSION = '1.30';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -753,6 +753,18 @@ function loadSettings() {
   };
 }
 function dateKey() { const d = new Date(); return `${d.getFullYear()}_${d.getMonth()+1}_${d.getDate()}`; }
+
+// ─── Humeur du jour ───────────────────────────────────────────
+const MOODS = [
+  { id:'top',    emoji:'🤩', label:'Génial !', color:'#fbbf24' },
+  { id:'bien',   emoji:'😊', label:'Bien',     color:'#34d399' },
+  { id:'bof',    emoji:'😐', label:'Bof',      color:'#94a3b8' },
+  { id:'pastop', emoji:'😔', label:'Pas top',  color:'#a78bfa' },
+  { id:'grogne', emoji:'😤', label:'Grognon',  color:'#f87171' },
+];
+function getMoodKey(pid) { return `mood_${pid}_${dateKey()}`; }
+function getMoodToday(pid)        { return lsGet(getMoodKey(pid), null); }
+function setMoodToday(pid, moodId){ lsSet(getMoodKey(pid), moodId); }
 function saveSettings(s) {
   lsSet('settings', s);
   // Sauvegarde séparée de la clé API (résiste mieux au quota iOS)
@@ -1547,6 +1559,14 @@ function AppProvider({ children }) {
     // ── Socratic mode ──
     if ((t === 'zya' || t === 'zelie') && state.settings.socraticMode?.[t]) {
       sysPrompt += '\n\n[MODE SOCRATIQUE] Au lieu de donner directement les réponses, guide par des questions. Pose une question à la fois pour amener l\'élève à trouver par lui-même. Félicite les bonnes réponses.';
+    }
+    // ── Humeur du jour ──
+    if (t === 'zya' || t === 'zelie') {
+      const moodId = getMoodToday(pid);
+      if (moodId) {
+        const m = MOODS.find(x => x.id === moodId);
+        if (m) sysPrompt += `\n\n[HUMEUR DU JOUR] ${pid === 'zya' ? 'Zya' : 'Zélie'} se sent "${m.label}" ${m.emoji} aujourd'hui. Adapte ton ton et ta bienveillance en conséquence. Si l'humeur est basse, sois particulièrement doux et encourageant.`;
+      }
     }
     // ── Profile context ──
     const profileCtx = state.settings.profileContext?.[pid];
@@ -2923,7 +2943,7 @@ function InputArea({ tabId, placeholder }) {
   const onInput = e => { setText(e.target.value); e.target.style.height='auto'; e.target.style.height = Math.min(e.target.scrollHeight,160)+'px'; };
 
   return (
-    <div style={{ padding: isMobile ? '10px 12px' : '12px 16px', borderTop:`1.5px solid #e8e5dc`, background:'white', flexShrink:0 }}>
+    <div style={{ padding: isMobile ? '10px 12px' : '12px 16px', paddingBottom: isMobile ? 'max(10px, calc(env(safe-area-inset-bottom, 0px) + 6px))' : '12px', borderTop:`1.5px solid #e8e5dc`, background:'white', flexShrink:0 }}>
       {!hasKey && (
         <div style={{ marginBottom:8, padding:'8px 12px', background:'#fff5e6', border:`1px solid ${C.orange}`, borderRadius:8, fontSize:12, color:'#c07030', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <span>Clé API OpenRouter requise pour envoyer des messages.</span>
@@ -3336,11 +3356,36 @@ function FlashcardsModal({ conv, apiKey, onClose }) {
   );
 }
 
+// ─── MoodPicker ───────────────────────────────────────────────
+function MoodPicker({ pid, accentColor, onPick }) {
+  const profile = getProfile(pid);
+  const name = profile?.name || pid;
+  return (
+    <div style={{ padding:'14px 16px', background:`linear-gradient(135deg,${accentColor}18,${accentColor}08)`, borderBottom:`2px solid ${accentColor}44`, flexShrink:0, display:'flex', flexDirection:'column', alignItems:'center', gap:10 }}>
+      <div style={{ fontSize:13, fontWeight:700, color:accentColor, letterSpacing:.3 }}>
+        Comment tu te sens aujourd'hui, {name} ?
+      </div>
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', justifyContent:'center' }}>
+        {MOODS.map(m => (
+          <button key={m.id} onClick={() => onPick(m.id)}
+            style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3, padding:'8px 12px', background:'white', border:`2px solid ${m.color}55`, borderRadius:14, cursor:'pointer', minWidth:58, transition:'all .15s' }}
+            onMouseEnter={e => { e.currentTarget.style.background=m.color+'22'; e.currentTarget.style.borderColor=m.color; e.currentTarget.style.transform='scale(1.08)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background='white'; e.currentTarget.style.borderColor=m.color+'55'; e.currentTarget.style.transform=''; }}>
+            <span style={{ fontSize:26 }}>{m.emoji}</span>
+            <span style={{ fontSize:10, color:'#666', fontWeight:600 }}>{m.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ZyaTab() {
   const { state, dispatch, sendMessage } = useApp();
   const isMobile = useIsMobile();
   const [mode, setMode] = useState('étude');
   const [showFlashcards, setShowFlashcards] = useState(false);
+  const [mood, setMood] = useState(() => getMoodToday('zya'));
   const t = state.tabs['zya']; const conv = t?.convs.find(c => c.id === t.activeId);
   const socratic = state.settings.socraticMode?.zya || false;
   const suggestions = mode === 'étude'
@@ -3355,68 +3400,80 @@ function ZyaTab() {
   const zyaStreak = getStreak('zya');
   const zyaRank   = getRank(getXP('zya'));
   const zyaGoal   = state.settings.dailyGoals?.zya || '';
+  const moodObj   = mood ? MOODS.find(m => m.id === mood) : null;
 
   return (
     <div style={{ flex:1, display:'flex', flexDirection:'column', minHeight:0, background:'#f8f4ff' }}>
-      <div style={{ padding:'10px 20px', borderBottom:`1.5px solid #d4c8f0`, background:'white', display:'flex', alignItems:'center', justifyContent:'space-between', minHeight:52, flexShrink:0 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <div style={{ width:36, height:36, borderRadius:'50%', background:`linear-gradient(135deg,${C.purple},#c87dd4)`, border:`2px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18 }}>✨</div>
-          <div>
-            <div style={{ fontSize:16, fontWeight:700, color:C.purple }}>Nova</div>
-            <div style={{ fontSize:11, color:'#aaa', display:'flex', gap:6 }}>
-              IA de Zya
-              {zyaStreak > 0 && <span style={{ color:'#b45309' }}>🔥 {zyaStreak}j</span>}
-              <span style={{ color:C.purple }}>{zyaRank.label}</span>
+
+      {/* ── Header compact ── */}
+      <div style={{ padding: isMobile ? '8px 12px' : '10px 20px', borderBottom:`1.5px solid #d4c8f0`, background:'white', flexShrink:0 }}>
+        {/* Ligne 1 : avatar + nom + humeur */}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <div style={{ width:32, height:32, borderRadius:'50%', background:`linear-gradient(135deg,${C.purple},#c87dd4)`, border:`2px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}>✨</div>
+            <div>
+              <div style={{ fontSize:15, fontWeight:700, color:C.purple }}>Nova</div>
+              <div style={{ fontSize:10, color:'#aaa', display:'flex', gap:5 }}>
+                {zyaStreak > 0 && <span style={{ color:'#b45309' }}>🔥 {zyaStreak}j</span>}
+                <span style={{ color:C.purple }}>{zyaRank.label}</span>
+                {moodObj && <span title="Humeur du jour">{moodObj.emoji}</span>}
+              </div>
+            </div>
+          </div>
+          {/* Contrôles — ligne 1 droite */}
+          <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+            {conv?.messages?.length > 0 && mode === 'étude' && (
+              <button onClick={() => setShowFlashcards(true)}
+                style={{ padding:'4px 8px', background:'white', color:C.purple, border:`1.5px solid ${C.purple}`, borderRadius:20, fontSize:11, cursor:'pointer', fontWeight:600 }}>
+                📇{!isMobile && ' Fiches'}
+              </button>
+            )}
+            <button onClick={toggleSocratic}
+              style={{ padding:'4px 8px', background: socratic ? C.purple : '#f1eee5', color: socratic ? 'white' : C.muted, border:`1.5px solid ${socratic ? C.purple : C.faint}`, borderRadius:20, fontSize:11, cursor:'pointer' }}>
+              🎓{!isMobile && ' Socratique'}
+            </button>
+            <div style={{ display:'flex', gap:0, border:`2px solid ${C.ink}`, borderRadius:999, overflow:'hidden', background:'#f8f4ff' }}>
+              {['étude','fun'].map(m => (
+                <button key={m} onClick={() => setMode(m)} style={{ padding: isMobile ? '4px 10px' : '5px 14px', background: mode===m ? C.purple : 'transparent', color: mode===m ? 'white' : C.purple, border:'none', cursor:'pointer', fontSize: isMobile ? 12 : 13, fontWeight: mode===m ? 600 : 400, transition:'background .15s' }}>
+                  {m==='étude' ? '📚' : '🎮'}{!isMobile && (m==='étude' ? ' Devoirs' : ' Fun')}
+                </button>
+              ))}
             </div>
           </div>
         </div>
-        <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-          {conv?.messages?.length > 0 && mode === 'étude' && (
-            <button onClick={() => setShowFlashcards(true)} title="Générer des fiches de révision"
-              style={{ padding:'4px 10px', background:'white', color:C.purple, border:`1.5px solid ${C.purple}`, borderRadius:20, fontSize:11, cursor:'pointer', fontWeight:600 }}>
-              📇 Fiches
-            </button>
-          )}
-          <button onClick={toggleSocratic} title="Mode socratique"
-            style={{ padding:'4px 10px', background: socratic ? C.purple : '#f1eee5', color: socratic ? 'white' : C.muted, border:`1.5px solid ${socratic ? C.purple : C.faint}`, borderRadius:20, fontSize:11, cursor:'pointer', fontWeight: socratic ? 600 : 400 }}>
-            🎓 Socratique
-          </button>
-          <div style={{ display:'flex', gap:0, border:`2px solid ${C.ink}`, borderRadius:999, overflow:'hidden', background:'#f8f4ff' }}>
-            {['étude','fun'].map(m => (
-              <button key={m} onClick={() => setMode(m)} style={{ padding:'5px 16px', background: mode===m ? C.purple : 'transparent', color: mode===m ? 'white' : C.purple, border:'none', cursor:'pointer', fontSize:13, fontWeight: mode===m ? 600 : 400, transition:'background .15s' }}>
-                {m==='étude' ? '📚 Devoirs' : '🎮 Fun'}
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
+
+      {/* Humeur du jour (si pas encore choisie) */}
+      {!mood && <MoodPicker pid="zya" accentColor={C.purple} onPick={id => { setMoodToday('zya', id); setMood(id); }} />}
+
       {/* Bannière objectif du jour */}
       {zyaGoal && (
-        <div style={{ padding:'7px 20px', background:'linear-gradient(90deg,#ede9fe,#f5f3ff)', borderBottom:`1.5px solid #c4b5fd`, display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
-          <span style={{ fontSize:16 }}>🎯</span>
-          <div>
-            <span style={{ fontSize:11, fontWeight:700, color:C.purple, textTransform:'uppercase', letterSpacing:.5 }}>Objectif du jour · </span>
-            <span style={{ fontSize:13, color:'#4c1d95' }}>{zyaGoal}</span>
-          </div>
+        <div style={{ padding:'6px 16px', background:'linear-gradient(90deg,#ede9fe,#f5f3ff)', borderBottom:`1.5px solid #c4b5fd`, display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+          <span style={{ fontSize:14 }}>🎯</span>
+          <span style={{ fontSize:12, fontWeight:700, color:C.purple }}>Objectif · </span>
+          <span style={{ fontSize:12, color:'#4c1d95' }}>{zyaGoal}</span>
         </div>
       )}
+
+      {/* Corps */}
       {!conv?.messages?.length ? (
-        <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding: isMobile ? 20 : 32, gap:16 }}>
-          <div style={{ fontSize: isMobile ? 36 : 48 }}>✨</div>
+        <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-start', padding: isMobile ? '20px 16px' : 32, gap:16, paddingTop: isMobile ? 24 : 40 }}>
+          <div style={{ fontSize: isMobile ? 32 : 48 }}>✨</div>
           <div style={{ textAlign:'center' }}>
-            <div style={{ fontSize:22, fontWeight:700, color:C.purple, fontFamily:"'Permanent Marker',cursive" }}>Salut Zya ! Je suis Nova.</div>
-            <div style={{ fontSize:14, color:'#888', marginTop:6 }}>{mode==='étude' ? 'Mode devoirs — je t\'aide à vraiment comprendre' : 'Mode fun — parlons de tout et de rien !'}</div>
+            <div style={{ fontSize:20, fontWeight:700, color:C.purple, fontFamily:"'Permanent Marker',cursive" }}>Salut Zya ! Je suis Nova.</div>
+            <div style={{ fontSize:13, color:'#888', marginTop:4 }}>{mode==='étude' ? 'Mode devoirs — je t\'aide à vraiment comprendre' : 'Mode fun — parlons de tout et de rien !'}</div>
           </div>
-          <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(3,1fr)', gap:10, width:'100%', maxWidth:560 }}>
+          <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(3,1fr)', gap:8, width:'100%', maxWidth:540 }}>
             {suggestions.map(s => (
               <button key={s} onClick={() => sendMessage({ tabId:'zya', content:s })}
-                style={{ background:'white', border:`1.5px solid #d4c8f0`, borderRadius:10, padding:'10px 12px', cursor:'pointer', fontSize:13, textAlign:'left', color:'#555', boxShadow:'2px 2px 0 rgba(138,111,199,.1)' }}
+                style={{ background:'white', border:`1.5px solid #d4c8f0`, borderRadius:10, padding: isMobile ? '8px 10px' : '10px 12px', cursor:'pointer', fontSize: isMobile ? 12 : 13, textAlign:'left', color:'#555', boxShadow:'2px 2px 0 rgba(138,111,199,.1)', lineHeight:1.4 }}
                 onMouseEnter={e => { e.currentTarget.style.background='#f8f4ff'; }}
                 onMouseLeave={e => { e.currentTarget.style.background='white'; }}>{s}</button>
             ))}
           </div>
         </div>
       ) : <ChatThread tabId="zya" />}
+
       <InputArea tabId="zya" placeholder="Pose ta question à Nova…" />
       {showFlashcards && <FlashcardsModal conv={conv} apiKey={state.settings.apiKey} onClose={() => setShowFlashcards(false)} />}
     </div>
@@ -3427,6 +3484,7 @@ function ZelieTab() {
   const { state, dispatch, sendMessage } = useApp();
   const isMobile = useIsMobile();
   const [mode, setMode] = useState('jeu');
+  const [mood, setMood] = useState(() => getMoodToday('zelie'));
   const t = state.tabs['zelie']; const conv = t?.convs.find(c => c.id === t.activeId);
   const socratic = state.settings.socraticMode?.zelie || false;
   const suggestions = mode === 'jeu'
@@ -3441,59 +3499,71 @@ function ZelieTab() {
   const zelieStreak = getStreak('zelie');
   const zelieRank   = getRank(getXP('zelie'));
   const zelieGoal   = state.settings.dailyGoals?.zelie || '';
+  const moodObj     = mood ? MOODS.find(m => m.id === mood) : null;
 
   return (
     <div style={{ flex:1, display:'flex', flexDirection:'column', minHeight:0, background:'#fff5f9' }}>
-      <div style={{ padding:'10px 20px', borderBottom:`1.5px solid #f8c8dc`, background:'white', display:'flex', alignItems:'center', justifyContent:'space-between', minHeight:52, flexShrink:0 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <div style={{ width:40, height:40, borderRadius:'50%', background:`linear-gradient(135deg,${C.pink},${C.yellow})`, border:`2px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20 }}>🌸</div>
-          <div>
-            <div style={{ fontSize:16, fontWeight:700, color:C.pink, fontFamily:"'Permanent Marker',cursive" }}>Pixel</div>
-            <div style={{ fontSize:11, color:'#aaa', display:'flex', gap:6 }}>
-              Ami robot de Zélie
-              {zelieStreak > 0 && <span style={{ color:'#b45309' }}>🔥 {zelieStreak}j</span>}
-              <span style={{ color:C.pink }}>{zelieRank.label}</span>
+
+      {/* ── Header compact ── */}
+      <div style={{ padding: isMobile ? '8px 12px' : '10px 20px', borderBottom:`1.5px solid #f8c8dc`, background:'white', flexShrink:0 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <div style={{ width:34, height:34, borderRadius:'50%', background:`linear-gradient(135deg,${C.pink},${C.yellow})`, border:`2px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18 }}>🌸</div>
+            <div>
+              <div style={{ fontSize:15, fontWeight:700, color:C.pink, fontFamily:"'Permanent Marker',cursive" }}>Pixel</div>
+              <div style={{ fontSize:10, color:'#aaa', display:'flex', gap:5 }}>
+                {zelieStreak > 0 && <span style={{ color:'#b45309' }}>🔥 {zelieStreak}j</span>}
+                <span style={{ color:C.pink }}>{zelieRank.label}</span>
+                {moodObj && <span title="Humeur du jour">{moodObj.emoji}</span>}
+              </div>
             </div>
           </div>
-        </div>
-        <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-          <button onClick={toggleSocratic} title="Mode socratique"
-            style={{ padding:'4px 8px', background: socratic ? C.pink : '#f1eee5', color: socratic ? 'white' : C.muted, border:`1.5px solid ${socratic ? C.pink : C.faint}`, borderRadius:20, fontSize:11, cursor:'pointer', fontWeight: socratic ? 600 : 400 }}>
-            🎓 Socratique
-          </button>
-          {[{ id:'jeu', label:'🎈 Jeu', color:C.yellow }, { id:'devoirs', label:'📚 Devoirs', color:C.green }].map(m => (
-            <button key={m.id} onClick={() => setMode(m.id)}
-              style={{ padding: isMobile ? '5px 10px' : '6px 14px', background: mode===m.id ? m.color : '#f9f4f6', border:`2px solid ${mode===m.id ? C.ink : '#e8e5dc'}`, borderRadius:999, cursor:'pointer', fontSize: isMobile ? 12 : 13, fontWeight: mode===m.id ? 700 : 400, boxShadow: mode===m.id ? '2px 2px 0 rgba(0,0,0,.1)' : 'none' }}>{m.label}</button>
-          ))}
+          <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+            <button onClick={toggleSocratic}
+              style={{ padding:'4px 8px', background: socratic ? C.pink : '#f1eee5', color: socratic ? 'white' : C.muted, border:`1.5px solid ${socratic ? C.pink : C.faint}`, borderRadius:20, fontSize:11, cursor:'pointer' }}>
+              🎓{!isMobile && ' Socratique'}
+            </button>
+            {[{ id:'jeu', emoji:'🎈', label:'Jeu', color:C.yellow }, { id:'devoirs', emoji:'📚', label:'Devoirs', color:C.green }].map(m => (
+              <button key={m.id} onClick={() => setMode(m.id)}
+                style={{ padding: isMobile ? '4px 10px' : '5px 14px', background: mode===m.id ? m.color : '#f9f4f6', border:`2px solid ${mode===m.id ? C.ink : '#e8e5dc'}`, borderRadius:999, cursor:'pointer', fontSize: isMobile ? 12 : 13, fontWeight: mode===m.id ? 700 : 400, boxShadow: mode===m.id ? '2px 2px 0 rgba(0,0,0,.1)' : 'none' }}>
+                {m.emoji}{!isMobile && ` ${m.label}`}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
+
+      {/* Humeur du jour (si pas encore choisie) */}
+      {!mood && <MoodPicker pid="zelie" accentColor={C.pink} onPick={id => { setMoodToday('zelie', id); setMood(id); }} />}
+
       {/* Bannière objectif du jour */}
       {zelieGoal && (
-        <div style={{ padding:'7px 20px', background:'linear-gradient(90deg,#fce7f3,#fff1f7)', borderBottom:`1.5px solid #fbcfe8`, display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
-          <span style={{ fontSize:16 }}>🎯</span>
-          <div>
-            <span style={{ fontSize:11, fontWeight:700, color:C.pink, textTransform:'uppercase', letterSpacing:.5 }}>Objectif du jour · </span>
-            <span style={{ fontSize:13, color:'#831843' }}>{zelieGoal}</span>
-          </div>
+        <div style={{ padding:'6px 16px', background:'linear-gradient(90deg,#fce7f3,#fff1f7)', borderBottom:`1.5px solid #fbcfe8`, display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+          <span style={{ fontSize:14 }}>🎯</span>
+          <span style={{ fontSize:12, fontWeight:700, color:C.pink }}>Objectif · </span>
+          <span style={{ fontSize:12, color:'#831843' }}>{zelieGoal}</span>
         </div>
       )}
+
+      {/* Corps */}
       {!conv?.messages?.length ? (
-        <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding: isMobile ? 20 : 32, gap:16 }}>
-          <div style={{ width: isMobile ? 72 : 100, height: isMobile ? 72 : 100, borderRadius:'50%', background:`linear-gradient(135deg,${C.pink},${C.yellow})`, border:`3px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize: isMobile ? 36 : 50, boxShadow:'4px 4px 0 rgba(0,0,0,.1)' }}>🌸</div>
+        <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-start', padding: isMobile ? '20px 14px' : 32, gap:14, paddingTop: isMobile ? 20 : 40 }}>
+          <div style={{ width: isMobile ? 64 : 100, height: isMobile ? 64 : 100, borderRadius:'50%', background:`linear-gradient(135deg,${C.pink},${C.yellow})`, border:`3px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize: isMobile ? 32 : 50, boxShadow:'4px 4px 0 rgba(0,0,0,.1)', flexShrink:0 }}>🌸</div>
           <div style={{ textAlign:'center' }}>
-            <div style={{ fontSize:26, fontWeight:700, color:C.pink, fontFamily:"'Permanent Marker',cursive" }}>Coucou Zélie ! 🌟</div>
-            <div style={{ fontSize:15, color:'#888', marginTop:6 }}>{mode==='jeu' ? 'Je suis Pixel, ton ami robot ! On joue ?' : 'Mode devoirs ! On travaille ensemble ? 📚'}</div>
+            <div style={{ fontSize: isMobile ? 22 : 26, fontWeight:700, color:C.pink, fontFamily:"'Permanent Marker',cursive" }}>Coucou Zélie ! 🌟</div>
+            <div style={{ fontSize: isMobile ? 13 : 15, color:'#888', marginTop:4 }}>{mode==='jeu' ? 'Je suis Pixel, ton ami robot ! On joue ?' : 'Mode devoirs ! On travaille ensemble ? 📚'}</div>
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:12, width:'100%', maxWidth:420 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap: isMobile ? 8 : 12, width:'100%', maxWidth:420 }}>
             {suggestions.map(s => (
               <button key={s} onClick={() => sendMessage({ tabId:'zelie', content:s })}
-                style={{ background:'white', border:`2px solid #f8c8dc`, borderRadius:14, padding:'14px 16px', cursor:'pointer', fontSize:14, textAlign:'center', color:'#555', boxShadow:'3px 3px 0 rgba(232,138,178,.15)' }}
+                style={{ background:'white', border:`2px solid #f8c8dc`, borderRadius:12, padding: isMobile ? '10px 10px' : '14px 16px', cursor:'pointer', fontSize: isMobile ? 12 : 14, textAlign:'center', color:'#555', boxShadow:'3px 3px 0 rgba(232,138,178,.15)', lineHeight:1.4 }}
                 onMouseEnter={e => { e.currentTarget.style.background='#fff5f9'; }}
                 onMouseLeave={e => { e.currentTarget.style.background='white'; }}>{s}</button>
             ))}
           </div>
         </div>
       ) : <ChatThread tabId="zelie" />}
+
       <InputArea tabId="zelie" placeholder="Dis quelque chose à Pixel 🌸" />
     </div>
   );
@@ -3571,6 +3641,25 @@ function FamilyTab() {
       {view === 'suivi' && isAdmin && (
         <div className="scroll-y" style={{ flex:1, minHeight:0, padding: isMobile ? '14px 12px' : '20px 28px', display:'flex', flexDirection:'column', gap:20 }}>
           <div style={{ fontSize:13, color:'#888', marginBottom:4 }}>Lecture seule · conversations récentes de Zya et Zélie</div>
+          {/* Humeurs du jour */}
+          <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
+            {['zya','zelie'].map(kid => {
+              const kidProfile = getProfile(kid);
+              const moodId = getMoodToday(kid);
+              const moodObj = moodId ? MOODS.find(m => m.id === moodId) : null;
+              return (
+                <div key={kid} style={{ display:'flex', alignItems:'center', gap:8, background:'white', border:`2px solid ${kidProfile?.color}44`, borderRadius:12, padding:'8px 14px' }}>
+                  <ProfileAvatar profile={kidProfile} size={28} />
+                  <div>
+                    <div style={{ fontSize:12, fontWeight:700, color:kidProfile?.color }}>{kidProfile?.name}</div>
+                    <div style={{ fontSize:13 }}>
+                      {moodObj ? <>{moodObj.emoji} <span style={{ fontSize:11, color:'#666' }}>{moodObj.label}</span></> : <span style={{ fontSize:11, color:'#aaa' }}>Humeur non renseignée</span>}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
           {['zya','zelie'].map(kid => {
             const kidProfile = getProfile(kid);
             const kidColor = kidProfile?.color;
@@ -5080,25 +5169,18 @@ function MobileDrawer() {
           background:C.shade, padding:'8px 10px',
           display:'flex', alignItems:'center', gap:6 }}>
           <button onClick={() => { dispatch({ type:'TOGGLE_SEARCH' }); close(); }}
-            style={{ flex:1, padding:'8px 4px', border:`2px solid ${C.faint}`,
+            style={{ flex:1, padding:'10px 4px', border:`2px solid ${C.faint}`,
               borderRadius:10, background:'white', cursor:'pointer', fontSize:13,
               display:'flex', alignItems:'center', justifyContent:'center',
-              gap:4, minHeight:40 }}>
+              gap:6, minHeight:44 }}>
             🔍 <span>Recherche</span>
           </button>
           <button onClick={() => { dispatch({ type:'TOGGLE_SETTINGS' }); close(); }}
-            style={{ flex:1, padding:'8px 4px', border:`2px solid ${C.faint}`,
+            style={{ flex:1, padding:'10px 4px', border:`2px solid ${C.faint}`,
               borderRadius:10, background:'white', cursor:'pointer', fontSize:13,
               display:'flex', alignItems:'center', justifyContent:'center',
-              gap:4, minHeight:40 }}>
+              gap:6, minHeight:44 }}>
             ⚙️ <span>Réglages</span>
-          </button>
-          <button onClick={() => { dispatch({ type:'SET_PROFILE', payload:null }); close(); }}
-            style={{ flex:1, padding:'8px 4px', border:`2px solid ${C.faint}`,
-              borderRadius:10, background:'white', cursor:'pointer', fontSize:13,
-              display:'flex', alignItems:'center', justifyContent:'center',
-              gap:4, minHeight:40, color: overBudget ? C.red : C.ink }}>
-            👤 <span>Profil</span>
           </button>
         </div>
       </div>
@@ -5323,7 +5405,7 @@ function PersonalizedSplash({ pid, onChangeProfile }) {
 
       {/* Grand avatar */}
       <div style={{ position:'relative', animation:'fadeIn .4s ease' }}>
-        <ProfileAvatar profile={profile} size={isMobile ? 140 : 180} />
+        <ProfileAvatar profile={profile} size={isMobile ? 180 : 220} />
         {/* Badge rang en surimpression */}
         <div style={{ position:'absolute', bottom:-6, right:-6, background:'white', border:`3px solid ${C.ink}`, borderRadius:999, padding:'2px 8px', fontSize:12, fontWeight:700, color:C.ink, boxShadow:`2px 2px 0 ${C.ink}` }}>
           {rank.label.split(' ')[0]}
