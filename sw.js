@@ -2,7 +2,7 @@
 // Rôle : satisfaire les critères PWA installable sur Chrome/Android
 // Ne jamais interférer avec le chargement de l'app
 
-const CACHE = 'ricard-ai-v31';
+const CACHE = 'ricard-ai-v32';
 
 // Install : activation immédiate
 self.addEventListener('install', () => self.skipWaiting());
@@ -12,15 +12,13 @@ self.addEventListener('message', e => {
   if (e.data === 'SKIP_WAITING') self.skipWaiting();
 });
 
-// Activate : PAS de clients.claim() — laisser les pages existantes tranquilles
-// Nettoyer les anciens caches uniquement
+// Activate : nettoyer les anciens caches + prendre le contrôle immédiatement
 self.addEventListener('activate', e => {
   e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-    )
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(() => self.clients.claim()) // force la prise de contrôle sans rechargement
   );
-  // NE PAS appeler clients.claim() — c'est ça qui causait la page blanche
 });
 
 // Fetch : ne gérer QUE les requêtes de navigation (chargement de la page)
