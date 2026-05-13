@@ -2,7 +2,7 @@
 // Rôle : satisfaire les critères PWA installable sur Chrome/Android
 // Ne jamais interférer avec le chargement de l'app
 
-const CACHE = 'ricard-ai-v19';
+const CACHE = 'ricard-ai-v20';
 
 // Install : activation immédiate
 self.addEventListener('install', () => self.skipWaiting());

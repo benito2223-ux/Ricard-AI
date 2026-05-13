@@ -381,7 +381,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.19';
+const APP_VERSION = '1.20';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -2930,15 +2930,34 @@ function EmptyState({ tabId, title, suggestions }) {
   );
 }
 
+// ─── Suggestions par profil (Chat tab) ───────────────────────
+const CHAT_SUGGESTIONS = {
+  papa: {
+    title: 'Bonjour ! Que faisons-nous aujourd\'hui ?',
+    suggestions: ['📝 Aide-moi à brainstormer','🛠️ Debug mon code','📊 Analyse ce texte','✍️ Améliore ma rédaction','🌐 Traduis ce passage','💡 Explique ce concept'],
+  },
+  maman: {
+    title: 'Bonjour ! Comment puis-je t\'aider ?',
+    suggestions: ['✍️ Améliore ce message à mon style','📋 Rédige une ESS pour moi','📧 Écris un email professionnel','📝 Résume ce document long','💬 Aide-moi à formuler ça avec tact','📊 Analyse cette situation et conseille-moi'],
+  },
+  // Zya et Zélie ont leurs propres onglets dédiés
+  default: {
+    title: 'Bonjour ! Que faisons-nous aujourd\'hui ?',
+    suggestions: ['📝 Aide-moi à brainstormer','💡 Explique ce concept','✍️ Améliore ma rédaction','🌐 Traduis ce passage','📊 Analyse ce texte','🛠️ Debug mon code'],
+  },
+};
+
 // ─── Tabs ─────────────────────────────────────────────────────
 function ChatTab() {
   const { state } = useApp();
   const t = state.tabs['chat']; const conv = t?.convs.find(c => c.id === t.activeId);
+  const pid = state.profile;
+  const cfg = CHAT_SUGGESTIONS[pid] || CHAT_SUGGESTIONS.default;
   return (
     <div style={{ flex:1, display:'flex', flexDirection:'column', minHeight:0 }}>
       <ChatHeader tabId="chat" title="Chat" icon="💬" />
       {!conv?.messages?.length
-        ? <EmptyState tabId="chat" title="Bonjour ! Que faisons-nous aujourd'hui ?" suggestions={['📝 Aide-moi à brainstormer','🛠️ Debug mon code','📊 Analyse ce texte','✍️ Améliore ma rédaction','🌐 Traduis ce passage','💡 Explique ce concept']} />
+        ? <EmptyState tabId="chat" title={cfg.title} suggestions={cfg.suggestions} />
         : <ChatThread tabId="chat" />}
       <InputArea tabId="chat" placeholder="Écris ton message… (Entrée pour envoyer)" />
     </div>
@@ -3051,8 +3070,8 @@ function ZyaTab() {
   const t = state.tabs['zya']; const conv = t?.convs.find(c => c.id === t.activeId);
   const socratic = state.settings.socraticMode?.zya || false;
   const suggestions = mode === 'étude'
-    ? ['📚 Aide-moi avec les maths','🔬 Explique-moi la physique','✍️ Corrige ma rédac','🌍 Quiz géographie','📖 Résume ce chapitre','💻 Apprends-moi à coder']
-    : ['🎭 Jouons à un jeu de rôle','💬 On discute ?','🎵 Recommande de la musique','🎬 Parle-moi d\'un film','🌟 Qu\'est-ce qui se passe ?','✨ Surprends-moi !'];
+    ? ['📐 Explique-moi ce truc en maths','✍️ Corrige ma rédac sans la faire à ma place','🔬 SVT / physique — j\'ai pas compris','📚 Fais-moi un résumé de ce chapitre','🧠 Entraîne-moi pour le brevet','💻 Apprends-moi à coder step by step']
+    : ['🎵 Crée-moi une playlist selon mon mood','🎬 On analyse une série / un film ?','✍️ Écris un fanfic avec moi','🌍 Explique-moi l\'actu sans me prendre pour une gamine','😂 Dis-moi quelque chose d\'inattendu','🗣️ Entraîne-moi en anglais façon conversation'];
 
   const toggleSocratic = () => {
     const newSettings = { ...state.settings, socraticMode: { ...state.settings.socraticMode, zya: !socratic } };
@@ -3130,8 +3149,8 @@ function ZelieTab() {
   const t = state.tabs['zelie']; const conv = t?.convs.find(c => c.id === t.activeId);
   const socratic = state.settings.socraticMode?.zelie || false;
   const suggestions = mode === 'jeu'
-    ? ['🦄 Histoire de licorne','🎭 Jouons aux devinettes !','🐬 Parle-moi des dauphins','🎨 Idée de dessin']
-    : ['🔢 Aide-moi avec les multiplications','📖 On lit ensemble ?','🌍 C\'est quoi la géographie ?','🔬 Pourquoi le ciel est bleu ?'];
+    ? ['🦄 Invente une histoire avec moi','🎮 Jouons aux devinettes !','🐉 Raconte-moi un conte magique','🌈 On fait un dessin avec des mots ?','🐾 Parle-moi d\'un animal rigolo','🎪 Quiz : qui suis-je ?']
+    : ['✏️ Aide-moi à comprendre un texte','🔢 On fait des maths ensemble ?','🌍 C\'est quoi ce pays / cette ville ?','📖 Explique-moi simplement','🎨 Aide-moi à écrire une rédaction','💡 Pourquoi ça marche comme ça ?'];
 
   const toggleSocratic = () => {
     const newSettings = { ...state.settings, socraticMode: { ...state.settings.socraticMode, zelie: !socratic } };
