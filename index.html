@@ -2643,6 +2643,7 @@ function ChatThread({ tabId }) {
   if (!messages.length) return null;
 
   return (
+    <>
     <div ref={ref} className="scroll-y" style={{ flex:1, minHeight:0, padding: isMobile ? '12px 10px' : '20px 24px', display:'flex', flexDirection:'column', gap:12 }}>
       {messages.map((msg, idx) => {
         const isLastDone = idx === messages.length - 1 && msg.role === 'assistant' && msg.done;
@@ -2766,6 +2767,7 @@ function ChatThread({ tabId }) {
         </div>
       </>
     )}
+    </>
   );
 }
 const ACT_BTN = { background:'none', border:'1px solid #e0ddd4', borderRadius:4, padding:'1px 7px', fontSize:11, cursor:'pointer', color:'#888', fontFamily:'inherit' };
