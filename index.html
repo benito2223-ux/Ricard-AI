@@ -388,7 +388,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.24';
+const APP_VERSION = '1.25';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -1955,7 +1955,7 @@ function ProfileSelector() {
   const msgsToday = pid => lsGet('daily_' + pid + '_' + dateKey(), 0);
 
   return (
-    <div style={{ minHeight:'100dvh', background:C.paper, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', fontFamily:'var(--pc-font-body)', padding: isMobile ? '24px 16px' : 40, paddingTop: isMobile ? 'max(24px, calc(env(safe-area-inset-top, 0px) + 16px))' : '40px' }}>
+    <div style={{ minHeight:'100dvh', overflowY:'auto', background:C.paper, display:'flex', flexDirection:'column', alignItems:'center', justifyContent: isMobile ? 'flex-start' : 'center', fontFamily:'var(--pc-font-body)', padding: isMobile ? '24px 16px' : 40, paddingTop: isMobile ? 'max(32px, calc(env(safe-area-inset-top, 0px) + 20px))' : '40px', paddingBottom: isMobile ? 'max(32px, calc(env(safe-area-inset-bottom, 0px) + 20px))' : '40px' }}>
       <div style={{ marginBottom: isMobile ? 28 : 48, textAlign:'center' }}>
         <div style={{ fontFamily:'var(--pc-font-display)', fontSize: isMobile ? 52 : 72, color:C.ink, textShadow:`4px 4px 0 ${C.orange}, 8px 8px 0 ${C.yellow}`, lineHeight:1.1 }}>Ricard AI</div>
         <div style={{ marginTop:8, fontSize: isMobile ? 15 : 17, color:C.muted, fontFamily:'var(--pc-font-body)' }}>Qui utilise l'IA ce soir ?</div>
