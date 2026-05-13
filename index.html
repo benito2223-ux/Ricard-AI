@@ -40,6 +40,20 @@
   --pc-radius-2:      15px 225px 15px 255px / 255px 15px 225px 15px;
   --pc-radius-3:      8px 120px 8px 80px / 80px 8px 120px 8px;
 }
+/* ── Safe area iOS (Dynamic Island / notch) ── */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+}
+.safe-top    { padding-top:    env(safe-area-inset-top,    0px) !important; }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px) !important; }
+/* Spacer iOS autonome : occupe exactement la hauteur de la status bar */
+.ios-top-spacer {
+  height: env(safe-area-inset-top, 0px);
+  min-height: env(safe-area-inset-top, 0px);
+  flex-shrink: 0;
+  width: 100%;
+}
 *, *::before, *::after { box-sizing: border-box; }
 html, body, #root { margin: 0; padding: 0; height: 100%; overflow: hidden; }
 body { font-family: var(--pc-font-body); background: var(--pc-color-paper); color: var(--pc-color-black); -webkit-font-smoothing: antialiased; font-size: 16px; }
@@ -388,7 +402,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.32';
+const APP_VERSION = '1.33';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -1977,7 +1991,7 @@ function ProfileSelector() {
   const msgsToday = pid => lsGet('daily_' + pid + '_' + dateKey(), 0);
 
   return (
-    <div style={{ minHeight:'100dvh', overflowY:'auto', background:C.paper, display:'flex', flexDirection:'column', alignItems:'center', justifyContent: isMobile ? 'flex-start' : 'center', fontFamily:'var(--pc-font-body)', padding: isMobile ? '0 16px' : 40, paddingTop: isMobile ? 'max(60px, calc(env(safe-area-inset-top, 0px) + 16px))' : '40px', paddingBottom: isMobile ? 'max(24px, calc(env(safe-area-inset-bottom, 0px) + 8px))' : '40px' }}>
+    <div style={{ minHeight:'100dvh', overflowY:'auto', background:C.paper, display:'flex', flexDirection:'column', alignItems:'center', justifyContent: isMobile ? 'flex-start' : 'center', fontFamily:'var(--pc-font-body)', paddingLeft:'16px', paddingRight:'16px', paddingTop: isMobile ? '80px' : '40px', paddingBottom: isMobile ? '24px' : '40px' }}>
       <div style={{ marginBottom: isMobile ? 28 : 48, textAlign:'center' }}>
         <div style={{ fontFamily:'var(--pc-font-display)', fontSize: isMobile ? 52 : 72, color:C.ink, textShadow:`4px 4px 0 ${C.orange}, 8px 8px 0 ${C.yellow}`, lineHeight:1.1 }}>Ricard AI</div>
         <div style={{ marginTop:8, fontSize: isMobile ? 15 : 17, color:C.muted, fontFamily:'var(--pc-font-body)' }}>Qui utilise l'IA ce soir ?</div>
@@ -5193,6 +5207,8 @@ function Layout() {
 
   return (
     <div style={{ height:'100dvh', display:'flex', flexDirection:'column', overflow:'hidden', background:C.paper }}>
+      {/* Spacer safe-area iOS — visible uniquement en PWA standalone sur iPhone */}
+      {isMobile && <div className="ios-top-spacer" style={{ background:C.paper }} />}
       {/* Title bar — hidden on mobile */}
       {!isMobile && (
         <div style={{ height:28, background:'#eae6dc', borderBottom:`1px solid #d8d4ca`, display:'flex', alignItems:'center', padding:'0 14px', gap:10, flexShrink:0 }}>
@@ -5379,7 +5395,7 @@ function PersonalizedSplash({ pid, onChangeProfile }) {
   };
 
   return (
-    <div style={{ height:'100dvh', background:C.paper, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', fontFamily:'var(--pc-font-body)', padding:'0 24px', paddingTop:'max(64px, calc(env(safe-area-inset-top, 0px) + 16px))', paddingBottom:'max(20px, calc(env(safe-area-inset-bottom, 0px) + 8px))', position:'relative', overflow:'hidden', gap: isMobile ? 18 : 28 }}>
+    <div style={{ height:'100dvh', background:C.paper, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', fontFamily:'var(--pc-font-body)', paddingLeft:'24px', paddingRight:'24px', paddingTop: isMobile ? '80px' : '40px', paddingBottom: isMobile ? '20px' : '40px', position:'relative', overflow:'hidden', gap: isMobile ? 18 : 28 }}>
 
       {/* Fond couleur profil en haut */}
       <div style={{ position:'absolute', top:0, left:0, right:0, height:'50%', background:`linear-gradient(180deg,${profile.color}55 0%,transparent 100%)`, pointerEvents:'none' }} />
