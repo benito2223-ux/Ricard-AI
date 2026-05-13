@@ -402,7 +402,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.33';
+const APP_VERSION = '1.34';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -3087,7 +3087,8 @@ function InputArea({ tabId, placeholder }) {
                 )}
               </>
             ) : (
-              <>
+              /* Sélecteur modèle — masqué pour les profils enfants */
+              (tabId !== 'zya' && tabId !== 'zelie') && <>
                 <button onClick={() => dispatch({ type:'TOGGLE_MODEL_PICKER' })}
                   style={{ background:'#f1eee5', border:`1px solid ${C.faint}`, borderRadius:20, padding:'4px 12px', fontSize:13, cursor:'pointer', display:'flex', alignItems:'center', gap:4, color:'#555' }}>
                   {model?.name} <span style={{ color:'#aaa', fontSize:11 }}>▾</span>
@@ -3387,15 +3388,11 @@ function ZyaTab() {
   const [showFlashcards, setShowFlashcards] = useState(false);
   const [mood, setMood] = useState(() => getMoodToday('zya'));
   const t = state.tabs['zya']; const conv = t?.convs.find(c => c.id === t.activeId);
-  const socratic = state.settings.socraticMode?.zya || false;
+  // Socratique automatique en mode Devoirs, désactivé en Fun (plus de bouton)
+  const socratic = mode === 'étude';
   const suggestions = mode === 'étude'
     ? ['📐 Explique-moi ce truc en maths','✍️ Corrige ma rédac sans la faire à ma place','🔬 SVT / physique — j\'ai pas compris','📚 Fais-moi un résumé de ce chapitre','🧠 Entraîne-moi pour le brevet','💻 Apprends-moi à coder step by step']
     : ['🎵 Crée-moi une playlist selon mon mood','🎬 On analyse une série / un film ?','✍️ Écris un fanfic avec moi','🌍 Explique-moi l\'actu sans me prendre pour une gamine','😂 Dis-moi quelque chose d\'inattendu','🗣️ Entraîne-moi en anglais façon conversation'];
-
-  const toggleSocratic = () => {
-    const newSettings = { ...state.settings, socraticMode: { ...state.settings.socraticMode, zya: !socratic } };
-    dispatch({ type:'SET_SETTINGS', payload: newSettings });
-  };
 
   const zyaStreak = getStreak('zya');
   const zyaRank   = getRank(getXP('zya'));
@@ -3407,7 +3404,6 @@ function ZyaTab() {
 
       {/* ── Header compact ── */}
       <div style={{ padding: isMobile ? '8px 12px' : '10px 20px', borderBottom:`1.5px solid #d4c8f0`, background:'white', flexShrink:0 }}>
-        {/* Ligne 1 : avatar + nom + humeur */}
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
             <div style={{ width:32, height:32, borderRadius:'50%', background:`linear-gradient(135deg,${C.purple},#c87dd4)`, border:`2px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}>✨</div>
@@ -3420,18 +3416,20 @@ function ZyaTab() {
               </div>
             </div>
           </div>
-          {/* Contrôles — ligne 1 droite */}
+          {/* Contrôles droite */}
           <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+            {/* Bouton nouvelle conversation — toujours visible */}
+            <button onClick={() => dispatch({ type:'NEW_CONV', payload:{ tabId:'zya' } })}
+              title="Nouvelle conversation"
+              style={{ width:32, height:32, borderRadius:'50%', background:C.purple, color:'white', border:`2px solid ${C.ink}`, cursor:'pointer', fontSize:20, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:300, lineHeight:1, boxShadow:`2px 2px 0 ${C.ink}`, flexShrink:0 }}>
+              +
+            </button>
             {conv?.messages?.length > 0 && mode === 'étude' && (
               <button onClick={() => setShowFlashcards(true)}
                 style={{ padding:'4px 8px', background:'white', color:C.purple, border:`1.5px solid ${C.purple}`, borderRadius:20, fontSize:11, cursor:'pointer', fontWeight:600 }}>
                 📇{!isMobile && ' Fiches'}
               </button>
             )}
-            <button onClick={toggleSocratic}
-              style={{ padding:'4px 8px', background: socratic ? C.purple : '#f1eee5', color: socratic ? 'white' : C.muted, border:`1.5px solid ${socratic ? C.purple : C.faint}`, borderRadius:20, fontSize:11, cursor:'pointer' }}>
-              🎓{!isMobile && ' Socratique'}
-            </button>
             <div style={{ display:'flex', gap:0, border:`2px solid ${C.ink}`, borderRadius:999, overflow:'hidden', background:'#f8f4ff' }}>
               {['étude','fun'].map(m => (
                 <button key={m} onClick={() => setMode(m)} style={{ padding: isMobile ? '4px 10px' : '5px 14px', background: mode===m ? C.purple : 'transparent', color: mode===m ? 'white' : C.purple, border:'none', cursor:'pointer', fontSize: isMobile ? 12 : 13, fontWeight: mode===m ? 600 : 400, transition:'background .15s' }}>
@@ -3486,15 +3484,11 @@ function ZelieTab() {
   const [mode, setMode] = useState('jeu');
   const [mood, setMood] = useState(() => getMoodToday('zelie'));
   const t = state.tabs['zelie']; const conv = t?.convs.find(c => c.id === t.activeId);
-  const socratic = state.settings.socraticMode?.zelie || false;
+  // Socratique automatique en mode Devoirs, désactivé en Jeu (plus de bouton)
+  const socratic = mode === 'devoirs';
   const suggestions = mode === 'jeu'
     ? ['🦄 Invente une histoire avec moi','🎮 Jouons aux devinettes !','🐉 Raconte-moi un conte magique','🌈 On fait un dessin avec des mots ?','🐾 Parle-moi d\'un animal rigolo','🎪 Quiz : qui suis-je ?']
     : ['✏️ Aide-moi à comprendre un texte','🔢 On fait des maths ensemble ?','🌍 C\'est quoi ce pays / cette ville ?','📖 Explique-moi simplement','🎨 Aide-moi à écrire une rédaction','💡 Pourquoi ça marche comme ça ?'];
-
-  const toggleSocratic = () => {
-    const newSettings = { ...state.settings, socraticMode: { ...state.settings.socraticMode, zelie: !socratic } };
-    dispatch({ type:'SET_SETTINGS', payload: newSettings });
-  };
 
   const zelieStreak = getStreak('zelie');
   const zelieRank   = getRank(getXP('zelie'));
@@ -3519,9 +3513,11 @@ function ZelieTab() {
             </div>
           </div>
           <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-            <button onClick={toggleSocratic}
-              style={{ padding:'4px 8px', background: socratic ? C.pink : '#f1eee5', color: socratic ? 'white' : C.muted, border:`1.5px solid ${socratic ? C.pink : C.faint}`, borderRadius:20, fontSize:11, cursor:'pointer' }}>
-              🎓{!isMobile && ' Socratique'}
+            {/* Bouton nouvelle conversation — toujours visible */}
+            <button onClick={() => dispatch({ type:'NEW_CONV', payload:{ tabId:'zelie' } })}
+              title="Nouvelle conversation"
+              style={{ width:32, height:32, borderRadius:'50%', background:C.pink, color:'white', border:`2px solid ${C.ink}`, cursor:'pointer', fontSize:20, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:300, lineHeight:1, boxShadow:`2px 2px 0 ${C.ink}`, flexShrink:0 }}>
+              +
             </button>
             {[{ id:'jeu', emoji:'🎈', label:'Jeu', color:C.yellow }, { id:'devoirs', emoji:'📚', label:'Devoirs', color:C.green }].map(m => (
               <button key={m.id} onClick={() => setMode(m.id)}
