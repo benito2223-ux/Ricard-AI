@@ -5,6 +5,76 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [1.35] — 2026-05-13 · Mic toujours visible + actions messages simplifiées pour les enfants
+
+### Corrigé
+- **Micro Zélie (Android)** : le bouton mic était masqué si `voiceSupported === false` — désormais toujours affiché sur mobile ; si la reconnaissance vocale n'est pas disponible, une alerte invite à utiliser Chrome
+- **Actions messages enfants** : sur mobile, `onMouseEnter` déclenchait au tap → toutes les actions adultes (PDF, .md, récap WhatsApp, mémoire, régénérer) s'affichaient et débordaient de l'écran
+  - Les profils Zya/Zélie n'affichent plus que le bouton **Copier** sur le tap d'un message
+  - Les adultes (Michel/Sandra) conservent la suite complète d'actions
+
+### Modifié
+- **Menu (+) enfants** : option "🎨 Générer une illustration" masquée pour Zya et Zélie (adultes uniquement)
+
+### Technique
+- Version : `1.35` — SW cache : `ricard-ai-v35`
+
+---
+
+## [1.34] — 2026-05-13 · Nouvelle conv visible + modèle caché + socratique auto
+
+### Ajouté
+- **Bouton + Nouvelle conversation** toujours visible dans les onglets Zya et Zélie (cercle coloré en haut à droite) — résout le problème d'accessibilité Android où le bouton n'apparaissait pas
+
+### Modifié
+- **Sélecteur de modèle** masqué dans la zone de texte des profils enfants (Zya/Zélie) — réduit les clics accidentels
+- **Mode Socratique automatique** : plus de bouton toggle
+  - Zya : activé automatiquement en mode « Étude », désactivé en « Fun »
+  - Zélie : activé automatiquement en mode « Devoirs », désactivé en « Fun » / « Jeu »
+
+### Technique
+- Version : `1.34` — SW cache : `ricard-ai-v34`
+
+---
+
+## [1.33] — 2026-05-13 · Fix définitif iPhone 16 safe-area
+
+### Corrigé
+- **Safe-area iPhone 16 (3e tentative — définitive)** : approche triple couche
+  1. Classe CSS `.ios-top-spacer { height: env(safe-area-inset-top, 0px) }` insérée comme premier enfant du Layout mobile — méthode recommandée par Apple
+  2. `paddingTop` fixe à `80px` pour `ProfileSelector` et `PersonalizedSplash` sur mobile (évite la dépendance à `env()` qui peut retourner 0)
+  3. `paddingBottom` réduit à `max(24px, env(safe-area-inset-bottom) + 8px)`
+
+### Technique
+- Version : `1.33` — SW cache : `ricard-ai-v33`
+
+---
+
+## [1.32] — 2026-05-13 · Fix sélection de profil + safe-area v2
+
+### Corrigé
+- **Boucle de connexion "Changer de profil"** (fix définitif) : suppression complète de l'auto-login dans `ProfileSelector` — la composante est désormais un sélecteur pur sans `useEffect`
+  - Le flux d'entrée passe exclusivement par `PersonalizedSplash`
+  - `ProfileSelector` s'affiche quand aucun profil par défaut n'est configuré, ou après `onChangeProfile()`
+  - `<PinEntry />` ajouté aux côtés de `ProfileSelector` (absent précédemment → PIN inutilisable)
+- **Safe-area iPhone 16 (2e tentative)** : `max(60px, calc(env(safe-area-inset-top, 0px) + 16px))`
+
+### Technique
+- Version : `1.32` — SW cache : `ricard-ai-v32`
+
+---
+
+## [1.31] — 2026-05-13 · Fix navigation profil + safe-area v1
+
+### Corrigé
+- **Boucle "Changer de profil"** (1re tentative) : prop `skipAutoLogin` ajoutée à `ProfileSelector` pour court-circuiter le `useEffect` d'auto-login
+- **Safe-area iPhone 16 (1re tentative)** : `calc(env(safe-area-inset-top, 44px) + 32px)` pour les zones sensibles
+
+### Technique
+- Version : `1.31` — SW cache : `ricard-ai-v31`
+
+---
+
 ## [1.30] — 2026-05-13 · Humeur du jour + fixes UX critiques
 
 ### Ajouté
