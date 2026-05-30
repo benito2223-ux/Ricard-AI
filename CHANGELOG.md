@@ -5,6 +5,22 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [1.36] — 2026-05-30 · Revue de code + corrections de bugs
+
+### Corrigé
+- **Mode socratique non câblé** : la variable `socratic` calculée dans ZyaTab/ZelieTab (auto en mode Devoirs/Étude) n'était jamais transmise à `sendMessage` — c'était du code mort. Le mode socratique automatique annoncé en v1.34 **ne fonctionnait pas** (il dépendait encore de l'ancien toggle dans Réglages).
+  - `socratic` est maintenant propagé : onglet enfant → `InputArea` → `sendMessage`
+  - `sendMessage` accepte un paramètre `socratic` ; s'il est fourni (onglets enfants) il prime, sinon repli sur `state.settings.socraticMode`
+  - Résultat : Nova est socratique en mode Devoirs (Zya), Pixel en mode Devoirs (Zélie), désactivé en Fun/Jeu
+- **Doublon `<Dashboard />`** dans `Layout` : le composant Dashboard était rendu deux fois quand il était ouvert (deux overlays superposés) — doublon supprimé
+
+### Technique
+- Validation : compilation Babel du script complet vérifiée sans erreur (`BABEL_OK`)
+- Note : le toggle « Mode socratique » dans Réglages est désormais ignoré pour les onglets enfants (comportement automatique) — il pourra être retiré dans une prochaine version
+- Version : `1.36` — SW cache : `ricard-ai-v36`
+
+---
+
 ## [1.35] — 2026-05-13 · Mic toujours visible + actions messages simplifiées pour les enfants
 
 ### Corrigé

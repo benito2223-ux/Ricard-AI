@@ -1531,7 +1531,7 @@ function AppProvider({ children }) {
     return () => { clearTimeout(timer); evts.forEach(ev => window.removeEventListener(ev, reset)); };
   }, [state.profile, state.settings.autoLockMinutes]);
 
-  const sendMessage = useCallback(async ({ tabId, content, attachments = [], abortRef }) => {
+  const sendMessage = useCallback(async ({ tabId, content, attachments = [], abortRef, socratic }) => {
     const t = tabId || state.tab;
     const hasContent = content?.trim() || attachments.length;
     if (!hasContent || state.streaming) return;
@@ -1570,8 +1570,9 @@ function AppProvider({ children }) {
     if (!conv) { dispatch({ type:'SET_STREAMING', payload:false }); return; }
 
     let sysPrompt = SYSTEM_PROMPTS[t] || SYSTEM_PROMPTS.chat;
-    // ── Socratic mode ──
-    if ((t === 'zya' || t === 'zelie') && state.settings.socraticMode?.[t]) {
+    // ── Socratic mode (auto selon le mode de l'onglet enfant, sinon réglage parent) ──
+    const useSocratic = (typeof socratic === 'boolean') ? socratic : state.settings.socraticMode?.[t];
+    if ((t === 'zya' || t === 'zelie') && useSocratic) {
       sysPrompt += '\n\n[MODE SOCRATIQUE] Au lieu de donner directement les réponses, guide par des questions. Pose une question à la fois pour amener l\'élève à trouver par lui-même. Félicite les bonnes réponses.';
     }
     // ── Humeur du jour ──
@@ -2826,7 +2827,7 @@ function ChatThread({ tabId }) {
 const ACT_BTN = { background:'none', border:'1px solid #e0ddd4', borderRadius:4, padding:'1px 7px', fontSize:11, cursor:'pointer', color:'#888', fontFamily:'inherit' };
 
 // ─── Input Area ───────────────────────────────────────────────
-function InputArea({ tabId, placeholder }) {
+function InputArea({ tabId, placeholder, socratic }) {
   const { state, dispatch, sendMessage } = useApp();
   const isMobile = useIsMobile();
   const [text, setText] = useState('');
@@ -2935,12 +2936,12 @@ function InputArea({ tabId, placeholder }) {
     }
 
     // ── Mode texte normal ────────────────────────────────
-    sendMessage({ tabId, content: text.trim(), attachments, abortRef });
+    sendMessage({ tabId, content: text.trim(), attachments, abortRef, socratic });
     setText('');
     setAttachments([]);
     setShowPlusMenu(false);
     if (taRef.current) taRef.current.style.height = 'auto';
-  }, [text, attachments, state.streaming, imgGenerating, imageMode, hasKey, tabId, sendMessage, dispatch, state.settings]);
+  }, [text, attachments, state.streaming, imgGenerating, imageMode, hasKey, tabId, sendMessage, dispatch, state.settings, socratic]);
 
   const onKey = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } };
   const onInput = e => { setText(e.target.value); e.target.style.height='auto'; e.target.style.height = Math.min(e.target.scrollHeight,160)+'px'; };
@@ -3470,7 +3471,7 @@ function ZyaTab() {
           </div>
           <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(3,1fr)', gap:8, width:'100%', maxWidth:540 }}>
             {suggestions.map(s => (
-              <button key={s} onClick={() => sendMessage({ tabId:'zya', content:s })}
+              <button key={s} onClick={() => sendMessage({ tabId:'zya', content:s, socratic })}
                 style={{ background:'white', border:`1.5px solid #d4c8f0`, borderRadius:10, padding: isMobile ? '8px 10px' : '10px 12px', cursor:'pointer', fontSize: isMobile ? 12 : 13, textAlign:'left', color:'#555', boxShadow:'2px 2px 0 rgba(138,111,199,.1)', lineHeight:1.4 }}
                 onMouseEnter={e => { e.currentTarget.style.background='#f8f4ff'; }}
                 onMouseLeave={e => { e.currentTarget.style.background='white'; }}>{s}</button>
@@ -3479,7 +3480,7 @@ function ZyaTab() {
         </div>
       ) : <ChatThread tabId="zya" />}
 
-      <InputArea tabId="zya" placeholder="Pose ta question à Nova…" />
+      <InputArea tabId="zya" placeholder="Pose ta question à Nova…" socratic={socratic} />
       {showFlashcards && <FlashcardsModal conv={conv} apiKey={state.settings.apiKey} onClose={() => setShowFlashcards(false)} />}
     </div>
   );
@@ -3558,7 +3559,7 @@ function ZelieTab() {
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap: isMobile ? 8 : 12, width:'100%', maxWidth:420 }}>
             {suggestions.map(s => (
-              <button key={s} onClick={() => sendMessage({ tabId:'zelie', content:s })}
+              <button key={s} onClick={() => sendMessage({ tabId:'zelie', content:s, socratic })}
                 style={{ background:'white', border:`2px solid #f8c8dc`, borderRadius:12, padding: isMobile ? '10px 10px' : '14px 16px', cursor:'pointer', fontSize: isMobile ? 12 : 14, textAlign:'center', color:'#555', boxShadow:'3px 3px 0 rgba(232,138,178,.15)', lineHeight:1.4 }}
                 onMouseEnter={e => { e.currentTarget.style.background='#fff5f9'; }}
                 onMouseLeave={e => { e.currentTarget.style.background='white'; }}>{s}</button>
@@ -3567,7 +3568,7 @@ function ZelieTab() {
         </div>
       ) : <ChatThread tabId="zelie" />}
 
-      <InputArea tabId="zelie" placeholder="Dis quelque chose à Pixel 🌸" />
+      <InputArea tabId="zelie" placeholder="Dis quelque chose à Pixel 🌸" socratic={socratic} />
     </div>
   );
 }
