@@ -3186,7 +3186,7 @@ function ChatTab() {
       {!conv?.messages?.length
         ? <EmptyState tabId="chat" title={cfg.title} suggestions={cfg.suggestions} />
         : <ChatThread tabId="chat" />}
-      <InputArea tabId="chat" placeholder="Écris ton message… (Entrée pour envoyer)" />
+      <InputArea tabId="chat" placeholder="Écris ton message… (Entrée pour envoyer)" socratic={false} />
     </div>
   );
 }
@@ -3200,7 +3200,7 @@ function CodeTab() {
       {!conv?.messages?.length
         ? <EmptyState tabId="code" title="Mode Code — colle du code, pose des questions" suggestions={['🐛 Debug ce code','✨ Refactorise cette fonction','📝 Explique ce snippet','🧪 Écris des tests unitaires','⚡ Optimise les performances','🔒 Trouve les failles de sécurité']} />
         : <ChatThread tabId="code" />}
-      <InputArea tabId="code" placeholder="Colle du code ou pose une question technique…" />
+      <InputArea tabId="code" placeholder="Colle du code ou pose une question technique…" socratic={false} />
     </div>
   );
 }
@@ -3285,7 +3285,7 @@ function DesignTab() {
           : <ChatThread tabId="design" />
       )}
 
-      <InputArea tabId="design" placeholder="Décris ton projet design…" />
+      <InputArea tabId="design" placeholder="Décris ton projet design…" socratic={false} />
     </div>
   );
 }
