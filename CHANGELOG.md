@@ -5,6 +5,28 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [1.38] — 2026-07-03 · Agenda familial partagé (Google Calendar)
+
+### Ajouté
+- **📅 Agenda familial** : nouvel onglet dans Famille → 📅 Agenda, connecté à un agenda Google Calendar unique partagé entre tous les membres de la famille (déplacements pro Papa, RDV Maman, soirées, travaux maison, motocross, gala de danse, entraînements gym...).
+  - **8 catégories** avec emoji + couleur Google Calendar dédiée : 🧳 Déplacement pro, 🏥 Rendez-vous, 🍻 Soirée/sortie, 🔨 Travaux maison, 🏍️ Motocross, 💃 Danse/gala, 🤸 Gym, 📌 Autre
+  - **Rattachement à un profil** optionnel (Papa/Maman/Zya/Zélie/toute la famille) — avatar affiché sur chaque événement
+  - **Événements récurrents hebdomadaires** (entraînements) via case à cocher
+  - **Connexion OAuth Google** (Google Identity Services, déjà chargé dans l'app) — scope limité à `calendar.events` + `calendar.readonly`, reconnexion silencieuse tentée au chargement si la session Google est encore active
+  - **Lecture pour tous les profils** (les filles voient leur planning gym/danse), **écriture réservée aux parents** (ajout/suppression)
+  - Les événements créés apparaissent nativement dans l'app Calendrier de chaque téléphone (notifications fiables iOS/Android, contrairement à des rappels internes à la PWA)
+  - **Réglages → 📅 Agenda familial** : champs pour coller l'ID client OAuth + l'ID de l'agenda partagé (config synchronisée famille via Firebase)
+
+### Technique
+- Architecture : un seul agenda Google partagé (pas de fusion multi-comptes) — plus simple et fiable
+- Nouvelles fonctions : `gInitAuth`, `gRequestToken`, `gEnsureToken`, `gcalListEvents`, `gcalCreateEvent`, `gcalDeleteEvent`, `buildAgendaEventPayload`
+- Nouveau composant `AgendaView`, nouvelle constante `AGENDA_CATEGORIES`
+- `googleCalendar` ajouté aux settings + `SHARED_SETTINGS_KEYS`
+- Testé en local : compilation OK, montage OK, navigation Famille→Agenda et Réglages→Agenda familial vérifiées sans erreur console (état non configuré, avant configuration OAuth réelle)
+- Version : `1.38` — SW cache : `ricard-ai-v38`
+
+---
+
 ## [1.37] — 2026-07-03 · Mémoire familiale automatique
 
 ### Ajouté

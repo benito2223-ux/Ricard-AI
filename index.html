@@ -269,6 +269,7 @@ const SHARED_SETTINGS_KEYS = [
   'socraticMode', 'profileContext', 'profileCodes',
   'appCode', 'autoLockMinutes',
   'familyMemories', 'memoryAutoCapture',
+  'googleCalendar',
 ];
 
 function extractSharedSettings(settings) {
@@ -403,7 +404,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.37';
+const APP_VERSION = '1.38';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -759,6 +760,7 @@ function loadSettings() {
     profileContext:  s.profileContext  ?? { papa:'', maman:'', zya:'', zelie:'' },
     familyMemories:  s.familyMemories  ?? { papa:[], maman:[], zya:[], zelie:[] },
     memoryAutoCapture: s.memoryAutoCapture ?? true,
+    googleCalendar:  s.googleCalendar  ?? { clientId:'', calendarId:'' },
     socraticMode:    s.socraticMode    ?? { zya:false, zelie:false },
     dailyLimits:     s.dailyLimits     ?? { papa:null, maman:null, zya:30, zelie:20 },
     accessHours:     s.accessHours     ?? {
@@ -1169,6 +1171,112 @@ Réponds UNIQUEMENT avec ce JSON, rien d'autre : {"facts": ["fait 1", "fait 2"]}
     console.warn('[Mémoire familiale] extraction échouée:', e.message);
     return [];
   }
+}
+
+// ─── Agenda familial (Google Calendar partagé) ─────────────────
+const AGENDA_CATEGORIES = [
+  { id:'pro',     label:'Déplacement pro', emoji:'🧳', color:'#4285f4', gcolor:'9'  },
+  { id:'rdv',     label:'Rendez-vous',     emoji:'🏥', color:'#ea4335', gcolor:'11' },
+  { id:'social',  label:'Soirée / sortie', emoji:'🍻', color:'#f4b400', gcolor:'5'  },
+  { id:'travaux', label:'Travaux maison',  emoji:'🔨', color:'#8e63ce', gcolor:'3'  },
+  { id:'moto',    label:'Motocross',       emoji:'🏍️', color:'#ff6d01', gcolor:'6'  },
+  { id:'danse',   label:'Danse / gala',    emoji:'💃', color:'#e91e8c', gcolor:'4'  },
+  { id:'gym',     label:'Gym',             emoji:'🤸', color:'#0b8043', gcolor:'10' },
+  { id:'autre',   label:'Autre',           emoji:'📌', color:'#616161', gcolor:'8'  },
+];
+function getAgendaCategory(id) { return AGENDA_CATEGORIES.find(c => c.id === id) || AGENDA_CATEGORIES[AGENDA_CATEGORIES.length - 1]; }
+
+let _gTokenClient = null;
+let _gAccessToken = null;
+let _gTokenExpiry = 0;
+
+function gAuthReady() { return typeof google !== 'undefined' && !!google.accounts?.oauth2; }
+
+function gInitAuth(clientId) {
+  if (!gAuthReady() || !clientId) return false;
+  _gTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: clientId,
+    scope: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly',
+    callback: () => {}, // remplacé à chaque appel dans ensureGoogleToken
+  });
+  return true;
+}
+
+function gRequestToken({ silent = false } = {}) {
+  return new Promise((resolve, reject) => {
+    if (!_gTokenClient) { reject(new Error('Google Agenda non configuré')); return; }
+    _gTokenClient.callback = (resp) => {
+      if (resp?.access_token) {
+        _gAccessToken = resp.access_token;
+        _gTokenExpiry = Date.now() + (resp.expires_in || 3500) * 1000;
+        resolve(_gAccessToken);
+      } else {
+        reject(new Error('Autorisation Google refusée'));
+      }
+    };
+    _gTokenClient.requestAccessToken({ prompt: silent ? '' : 'consent' });
+  });
+}
+
+async function gEnsureToken() {
+  if (_gAccessToken && Date.now() < _gTokenExpiry - 30000) return _gAccessToken;
+  return gRequestToken({ silent: !!_gAccessToken });
+}
+
+function gCalendarConnected() { return !!_gAccessToken; }
+
+async function gcalListEvents(calendarId, timeMinISO, timeMaxISO) {
+  const token = await gEnsureToken();
+  const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`
+    + `?timeMin=${encodeURIComponent(timeMinISO)}&timeMax=${encodeURIComponent(timeMaxISO)}`
+    + `&singleEvents=true&orderBy=startTime&maxResults=100`;
+  const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.error?.message || `Erreur agenda (${resp.status})`); }
+  const data = await resp.json();
+  return data.items || [];
+}
+
+async function gcalCreateEvent(calendarId, event) {
+  const token = await gEnsureToken();
+  const resp = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(event),
+  });
+  if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.error?.message || 'Erreur création événement'); }
+  return resp.json();
+}
+
+async function gcalDeleteEvent(calendarId, eventId) {
+  const token = await gEnsureToken();
+  const resp = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!resp.ok && resp.status !== 410) { const e = await resp.json().catch(() => ({})); throw new Error(e.error?.message || 'Erreur suppression'); }
+}
+
+// Construit le payload Google Calendar à partir du formulaire agenda
+function buildAgendaEventPayload({ title, categoryId, profileId, dateStart, timeStart, allDay, recurring }) {
+  const cat = getAgendaCategory(categoryId);
+  const payload = {
+    summary: `${cat.emoji} ${title}`,
+    colorId: cat.gcolor,
+    extendedProperties: { private: { ricardCategory: categoryId, ricardProfile: profileId || 'famille' } },
+  };
+  if (allDay) {
+    payload.start = { date: dateStart };
+    payload.end = { date: dateStart };
+  } else {
+    const startISO = `${dateStart}T${timeStart || '09:00'}:00`;
+    const startDate = new Date(startISO);
+    const endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // +1h par défaut
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    payload.start = { dateTime: startISO, timeZone: tz };
+    payload.end = { dateTime: endDate.toISOString().slice(0, 19), timeZone: tz };
+  }
+  if (recurring) payload.recurrence = ['RRULE:FREQ=WEEKLY'];
+  return payload;
 }
 
 // ─── Helpers gamification ────────────────────────────────────
@@ -3638,6 +3746,204 @@ function ZelieTab() {
   );
 }
 
+// ─── Vue Agenda familial (Google Calendar partagé) ─────────────
+function AgendaView({ isAdmin, isMobile }) {
+  const { state } = useApp();
+  const cfg = state.settings.googleCalendar || {};
+  const configured = !!(cfg.clientId && cfg.calendarId);
+  const [connected, setConnected] = useState(() => gCalendarConnected());
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const initedRef = useRef(null);
+
+  const [form, setForm] = useState({ title:'', categoryId:'rdv', profileId:'famille', dateStart:new Date().toISOString().slice(0,10), timeStart:'09:00', allDay:false, recurring:false });
+
+  useEffect(() => {
+    if (!configured) return;
+    if (initedRef.current === cfg.clientId) return;
+    gInitAuth(cfg.clientId);
+    initedRef.current = cfg.clientId;
+    // Tentative de reconnexion silencieuse (fonctionne si session Google encore active)
+    gRequestToken({ silent:true }).then(() => { setConnected(true); loadEvents(); }).catch(() => {});
+  }, [configured, cfg.clientId]);
+
+  const loadEvents = async () => {
+    if (!configured) return;
+    setLoading(true); setError('');
+    try {
+      const now = new Date();
+      const in60d = new Date(now.getTime() + 60 * 24 * 3600 * 1000);
+      const items = await gcalListEvents(cfg.calendarId, now.toISOString(), in60d.toISOString());
+      setEvents(items);
+      setConnected(true);
+    } catch (e) {
+      setError(e.message || 'Erreur de chargement');
+    }
+    setLoading(false);
+  };
+
+  const connect = async () => {
+    setError('');
+    try {
+      await gRequestToken({ silent:false });
+      setConnected(true);
+      await loadEvents();
+    } catch (e) {
+      setError(e.message || 'Connexion refusée');
+    }
+  };
+
+  const submitEvent = async () => {
+    if (!form.title.trim()) return;
+    setLoading(true); setError('');
+    try {
+      const payload = buildAgendaEventPayload(form);
+      await gcalCreateEvent(cfg.calendarId, payload);
+      setShowForm(false);
+      setForm(f => ({ ...f, title:'' }));
+      await loadEvents();
+    } catch (e) {
+      setError(e.message || 'Erreur de création');
+      setLoading(false);
+    }
+  };
+
+  const deleteEvent = async (id) => {
+    setLoading(true);
+    try {
+      await gcalDeleteEvent(cfg.calendarId, id);
+      setEvents(prev => prev.filter(e => e.id !== id));
+    } catch (e) {
+      setError(e.message || 'Erreur de suppression');
+    }
+    setLoading(false);
+  };
+
+  if (!configured) {
+    return (
+      <div className="scroll-y" style={{ flex:1, minHeight:0, padding: isMobile ? '20px 16px' : '28px', display:'flex', flexDirection:'column', alignItems:'center', gap:12, textAlign:'center' }}>
+        <div style={{ fontSize:40 }}>📅</div>
+        <div style={{ fontSize:15, fontWeight:700, color:C.teal }}>Agenda familial non configuré</div>
+        <div style={{ fontSize:13, color:'#888', maxWidth:420 }}>
+          {isAdmin ? <>Renseigne l'ID client OAuth Google et l'ID de l'agenda partagé dans <b>Réglages → 📅 Agenda familial</b>.</> : <>Demande à Papa ou Maman de configurer l'agenda dans les Réglages.</>}
+        </div>
+      </div>
+    );
+  }
+
+  // Regroupe les événements par jour
+  const grouped = {};
+  events.forEach(ev => {
+    const dateStr = ev.start?.dateTime || ev.start?.date;
+    if (!dateStr) return;
+    const day = dateStr.slice(0, 10);
+    (grouped[day] = grouped[day] || []).push(ev);
+  });
+  const days = Object.keys(grouped).sort();
+
+  return (
+    <div className="scroll-y" style={{ flex:1, minHeight:0, padding: isMobile ? '14px 12px' : '20px 28px', display:'flex', flexDirection:'column', gap:16 }}>
+      {!connected ? (
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:12, padding:'24px 0' }}>
+          <div style={{ fontSize:36 }}>📅</div>
+          <div style={{ fontSize:13, color:'#888', textAlign:'center' }}>Connecte-toi à l'agenda Google partagé « Famille Ricard »</div>
+          <button onClick={connect} style={{ padding:'8px 20px', background:C.teal, color:'white', border:`2px solid ${C.ink}`, borderRadius:20, fontSize:13, fontWeight:700, cursor:'pointer', boxShadow:`2px 2px 0 ${C.ink}` }}>
+            🔗 Connecter Google Agenda
+          </button>
+          {error && <div style={{ fontSize:12, color:C.red }}>{error}</div>}
+        </div>
+      ) : (
+        <>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <div style={{ fontSize:12, color:'#888' }}>{loading ? 'Chargement…' : `${events.length} événement(s) · 60 prochains jours`}</div>
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={loadEvents} title="Rafraîchir" style={{ background:'none', border:`1.5px solid ${C.faint}`, borderRadius:8, padding:'5px 10px', cursor:'pointer', fontSize:12 }}>🔄</button>
+              {isAdmin && (
+                <button onClick={() => setShowForm(v => !v)} style={{ background:C.teal, color:'white', border:`2px solid ${C.ink}`, borderRadius:8, padding:'5px 12px', cursor:'pointer', fontSize:12, fontWeight:700 }}>
+                  {showForm ? '× Fermer' : '+ Événement'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {error && <div style={{ fontSize:12, color:C.red, background:'#fee2e2', padding:'6px 10px', borderRadius:8 }}>{error}</div>}
+
+          {showForm && isAdmin && (
+            <div style={{ background:'white', border:`2px solid ${C.ink}`, borderRadius:12, padding:14, display:'flex', flexDirection:'column', gap:10 }}>
+              <input type="text" value={form.title} onChange={e => setForm(f => ({ ...f, title:e.target.value }))}
+                placeholder="Titre de l'événement…"
+                style={{ padding:'8px 10px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:13, outline:'none' }} />
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                <select value={form.categoryId} onChange={e => setForm(f => ({ ...f, categoryId:e.target.value }))}
+                  style={{ flex:1, minWidth:140, padding:'7px 8px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:13 }}>
+                  {AGENDA_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>)}
+                </select>
+                <select value={form.profileId} onChange={e => setForm(f => ({ ...f, profileId:e.target.value }))}
+                  style={{ flex:1, minWidth:140, padding:'7px 8px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:13 }}>
+                  <option value="famille">👨‍👩‍👧 Toute la famille</option>
+                  {PROFILES.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+                <input type="date" value={form.dateStart} onChange={e => setForm(f => ({ ...f, dateStart:e.target.value }))}
+                  style={{ padding:'6px 8px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:13 }} />
+                {!form.allDay && (
+                  <input type="time" value={form.timeStart} onChange={e => setForm(f => ({ ...f, timeStart:e.target.value }))}
+                    style={{ padding:'6px 8px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:13 }} />
+                )}
+                <label style={{ display:'flex', alignItems:'center', gap:5, fontSize:12, color:'#666', cursor:'pointer' }}>
+                  <input type="checkbox" checked={form.allDay} onChange={e => setForm(f => ({ ...f, allDay:e.target.checked }))} /> Journée entière
+                </label>
+                <label style={{ display:'flex', alignItems:'center', gap:5, fontSize:12, color:'#666', cursor:'pointer' }}>
+                  <input type="checkbox" checked={form.recurring} onChange={e => setForm(f => ({ ...f, recurring:e.target.checked }))} /> Se répète chaque semaine
+                </label>
+              </div>
+              <button onClick={submitEvent} disabled={!form.title.trim() || loading}
+                style={{ alignSelf:'flex-end', padding:'7px 18px', background: form.title.trim() ? C.ink : C.faint, color:'white', border:'none', borderRadius:8, fontSize:13, fontWeight:600, cursor: form.title.trim() ? 'pointer' : 'not-allowed' }}>
+                Ajouter à l'agenda ✓
+              </button>
+            </div>
+          )}
+
+          {days.length === 0 ? (
+            <div style={{ fontSize:13, color:'#bbb', fontStyle:'italic', textAlign:'center', padding:'24px 0' }}>Aucun événement dans les 60 prochains jours</div>
+          ) : days.map(day => {
+            const d = new Date(day + 'T12:00:00');
+            const label = d.toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long' });
+            return (
+              <div key={day}>
+                <div style={{ fontSize:12, fontWeight:700, color:C.teal, textTransform:'capitalize', marginBottom:6 }}>{label}</div>
+                <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                  {grouped[day].map(ev => {
+                    const catId = ev.extendedProperties?.private?.ricardCategory;
+                    const cat = catId ? getAgendaCategory(catId) : null;
+                    const profId = ev.extendedProperties?.private?.ricardProfile;
+                    const evProfile = profId && profId !== 'famille' ? getProfile(profId) : null;
+                    const isAllDay = !!ev.start?.date;
+                    const time = isAllDay ? 'Toute la journée' : (ev.start?.dateTime || '').slice(11,16);
+                    return (
+                      <div key={ev.id} style={{ display:'flex', alignItems:'center', gap:10, background:'white', border:`1.5px solid ${cat?.color || C.faint}55`, borderLeft:`4px solid ${cat?.color || C.faint}`, borderRadius:10, padding:'8px 12px' }}>
+                        <div style={{ fontSize:11, color:'#999', minWidth:44 }}>{time}</div>
+                        <div style={{ flex:1, fontSize:13 }}>{ev.summary}</div>
+                        {evProfile && <ProfileAvatar profile={evProfile} size={20} />}
+                        {isAdmin && (
+                          <button onClick={() => deleteEvent(ev.id)} title="Supprimer" style={{ background:'none', border:'none', cursor:'pointer', color:'#bbb', fontSize:14, padding:0 }}>×</button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── Family Tab ───────────────────────────────────────────────
 function FamilyTab() {
   const { state } = useApp();
@@ -3693,11 +3999,11 @@ function FamilyTab() {
           <span style={{ fontSize:22 }}>👨‍👩‍👧</span>
           <div>
             <div style={{ fontSize:16, fontWeight:700, color:C.teal }}>Famille Ricard</div>
-            <div style={{ fontSize:11, color:'#aaa' }}>{view === 'messages' ? 'Messages partagés' : 'Tableau de bord famille'}</div>
+            <div style={{ fontSize:11, color:'#aaa' }}>{view === 'messages' ? 'Messages partagés' : view === 'agenda' ? 'Agenda familial' : view === 'suivi' ? 'Suivi parental' : 'Tableau de bord famille'}</div>
           </div>
         </div>
-        <div style={{ display:'flex', gap:0, border:`2px solid ${C.ink}`, borderRadius:999, overflow:'hidden' }}>
-          {[{ id:'messages', label:'💬 Messages' }, { id:'dashboard', label:'📊 Dashboard' }, ...(isAdmin ? [{ id:'suivi', label:'👁️ Suivi' }] : [])].map(v => (
+        <div style={{ display:'flex', gap:0, border:`2px solid ${C.ink}`, borderRadius:999, overflow:'hidden', flexWrap:'wrap' }}>
+          {[{ id:'messages', label:'💬 Messages' }, { id:'agenda', label:'📅 Agenda' }, { id:'dashboard', label:'📊 Dashboard' }, ...(isAdmin ? [{ id:'suivi', label:'👁️ Suivi' }] : [])].map(v => (
             <button key={v.id} onClick={() => setView(v.id)}
               style={{ padding:'5px 14px', background: view===v.id ? C.teal : 'transparent', color: view===v.id ? 'white' : C.teal, border:'none', cursor:'pointer', fontSize:12, fontWeight: view===v.id ? 700 : 400 }}>
               {v.label}
@@ -3705,6 +4011,9 @@ function FamilyTab() {
           ))}
         </div>
       </div>
+
+      {/* Vue Agenda familial */}
+      {view === 'agenda' && <AgendaView isAdmin={isAdmin} isMobile={isMobile} />}
 
       {/* Vue Suivi (parents uniquement) */}
       {view === 'suivi' && isAdmin && (
@@ -4815,6 +5124,22 @@ function Settings() {
                 ☁️ Récupérer les réglages depuis Firebase
               </button>
             )}
+          </section>
+
+          {/* ── Agenda familial (Google Calendar partagé) ── */}
+          <section>
+            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>📅 Agenda familial</div>
+            <div style={{ fontSize:12, color:'#999', marginBottom:10, lineHeight:1.5 }}>
+              Connecte un agenda Google partagé (créé et partagé avec toute la famille depuis Google Agenda). Voir onglet Famille → 📅 Agenda une fois configuré.
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              <input type="text" value={s.googleCalendar?.clientId || ''} onChange={e => setS(prev => ({ ...prev, googleCalendar: { ...prev.googleCalendar, clientId: e.target.value.trim() } }))}
+                placeholder="ID client OAuth Google (se termine par .apps.googleusercontent.com)"
+                style={{ width:'100%', padding:'8px 10px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:12, fontFamily:'monospace', outline:'none', background:C.paper, boxSizing:'border-box' }} />
+              <input type="text" value={s.googleCalendar?.calendarId || ''} onChange={e => setS(prev => ({ ...prev, googleCalendar: { ...prev.googleCalendar, calendarId: e.target.value.trim() } }))}
+                placeholder="ID de l'agenda partagé (ex: xxxx@group.calendar.google.com)"
+                style={{ width:'100%', padding:'8px 10px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:12, fontFamily:'monospace', outline:'none', background:C.paper, boxSizing:'border-box' }} />
+            </div>
           </section>
 
           {/* ── Instructions personnalisées (statiques) ─── */}
