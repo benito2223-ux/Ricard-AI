@@ -5,6 +5,26 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [1.37] — 2026-07-03 · Mémoire familiale automatique
+
+### Ajouté
+- **🧠 Mémoire familiale** : Ricard retient désormais automatiquement les faits durables évoqués en conversation (préférences, événements, contexte de vie, difficultés récurrentes) et les réutilise pour personnaliser ses réponses dans les échanges suivants.
+  - **Capture automatique** : après chaque 3ᵉ échange d'une conversation, un modèle léger (`gpt-4o-mini`) extrait 0 à 2 faits nouveaux (JSON, dédupliqué contre les faits déjà connus). Silencieux, non bloquant, activable/désactivable dans Réglages.
+  - **Capture manuelle** : le bouton 📌 « Mémoriser » sur un message écrit désormais dans ce même store structuré (au lieu du bloc de texte `profileContext`), chaque souvenir devient individuellement supprimable.
+  - **Mémoire par profil** : Papa, Maman, Zya et Zélie ont chacun leur propre mémoire (max 80 entrées, purge FIFO des plus anciennes).
+  - **Injection au prompt** : les souvenirs actifs sont ajoutés au system prompt sous `[MÉMOIRE FAMILIALE]` à chaque message.
+  - **Réglages → 🧠 Mémoire familiale** : liste consultable/éditable par profil, toggle marche/arrêt de la capture auto, section « 📝 Instructions personnalisées » conservée séparément pour les consignes statiques.
+  - **Famille → Suivi (parents)** : carte dédiée montrant les 5 derniers souvenirs de Zya et Zélie — cohérent avec la philosophie de supervision déjà en place (conversations, humeur du jour).
+  - Synchronisé entre appareils via Firebase (`familyMemories`, `memoryAutoCapture` ajoutés à `SHARED_SETTINGS_KEYS`).
+
+### Technique
+- Nouvelles actions reducer : `ADD_FAMILY_MEMORIES`, `DELETE_FAMILY_MEMORY`
+- Nouvelle fonction `extractFamilyMemory()` — extraction JSON via `extractJsonObj()` existant, réutilise le pattern de `summarizeAndShareWA`
+- Version : `1.37` — SW cache : `ricard-ai-v37`
+- Testé en local : compilation Babel OK, montage React OK, sections Réglages + Suivi vérifiées sans erreur console
+
+---
+
 ## [1.36.1] — 2026-07-03 · Hotfix critique : page blanche (Babel CDN)
 
 ### Corrigé

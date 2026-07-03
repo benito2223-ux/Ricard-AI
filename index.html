@@ -268,6 +268,7 @@ const SHARED_SETTINGS_KEYS = [
   'budgets', 'dailyLimits', 'accessHours', 'dailyGoals',
   'socraticMode', 'profileContext', 'profileCodes',
   'appCode', 'autoLockMinutes',
+  'familyMemories', 'memoryAutoCapture',
 ];
 
 function extractSharedSettings(settings) {
@@ -402,7 +403,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.36';
+const APP_VERSION = '1.37';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -756,6 +757,8 @@ function loadSettings() {
     autoLockMinutes: s.autoLockMinutes ?? 0,
     defaultModels:   s.defaultModels   ?? { ...DEFAULT_MODELS_PER_TAB },
     profileContext:  s.profileContext  ?? { papa:'', maman:'', zya:'', zelie:'' },
+    familyMemories:  s.familyMemories  ?? { papa:[], maman:[], zya:[], zelie:[] },
+    memoryAutoCapture: s.memoryAutoCapture ?? true,
     socraticMode:    s.socraticMode    ?? { zya:false, zelie:false },
     dailyLimits:     s.dailyLimits     ?? { papa:null, maman:null, zya:30, zelie:20 },
     accessHours:     s.accessHours     ?? {
@@ -1126,6 +1129,48 @@ async function generateImage({ apiKey, model, prompt, onDone, onError }) {
   }
 }
 
+// ─── Mémoire familiale automatique ────────────────────────────
+// Après chaque échange, un modèle léger extrait les faits durables à retenir
+// (préférences, événements, contexte de vie) — silencieux, non bloquant.
+async function extractFamilyMemory({ apiKey, pid, userMsg, assistantMsg, existing }) {
+  if (!apiKey) return [];
+  const profile = getProfile(pid);
+  const knownFacts = (existing || []).slice(-30).map(m => `- ${m.text}`).join('\n') || '(aucun fait connu pour l\'instant)';
+  const sys = `Tu extrais des faits durables et utiles à propos de "${profile?.name || pid}" à partir d'un échange de conversation.
+Faits déjà connus (ne les répète pas) :
+${knownFacts}
+
+Règles :
+- Ne retiens que des informations DURABLES (préférences, contexte de vie, événements à venir, difficultés récurrentes, centres d'intérêt, relations importantes).
+- Ignore le small talk, les questions ponctuelles, les infos déjà connues.
+- Maximum 2 faits par échange. Formule chaque fait en une phrase courte et neutre, en français.
+- Si rien de notable, réponds avec une liste vide.
+Réponds UNIQUEMENT avec ce JSON, rien d'autre : {"facts": ["fait 1", "fait 2"]} ou {"facts": []}`;
+  try {
+    const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': location.origin, 'X-Title': 'Ricard AI' },
+      body: JSON.stringify({
+        model: 'openai/gpt-4o-mini',
+        messages: [
+          { role:'system', content: sys },
+          { role:'user', content: `Utilisateur : ${(userMsg || '').slice(0, 800)}\n\nRéponse : ${(assistantMsg || '').slice(0, 800)}` },
+        ],
+        stream: false,
+      }),
+    });
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    const raw = data.choices?.[0]?.message?.content || '';
+    const parsed = extractJsonObj(raw);
+    const facts = Array.isArray(parsed?.facts) ? parsed.facts.filter(f => typeof f === 'string' && f.trim()).slice(0, 2) : [];
+    return facts;
+  } catch (e) {
+    console.warn('[Mémoire familiale] extraction échouée:', e.message);
+    return [];
+  }
+}
+
 // ─── Helpers gamification ────────────────────────────────────
 const RANKS = [
   { min:0,   label:'🌱 Graine',    color:'#86efac' },
@@ -1380,6 +1425,20 @@ function reducer(state, action) {
         return { ...c, messages };
       }) } } };
     }
+    case 'ADD_FAMILY_MEMORIES': {
+      const { pid, facts, source = 'auto' } = action.payload;
+      if (!facts?.length) return state;
+      const now = Date.now();
+      const newEntries = facts.map(text => ({ id: uuid(), text, ts: now, source }));
+      const current = state.settings.familyMemories?.[pid] || [];
+      const merged = [...current, ...newEntries].slice(-80); // cap 80 entrées, FIFO
+      return { ...state, settings: { ...state.settings, familyMemories: { ...state.settings.familyMemories, [pid]: merged } } };
+    }
+    case 'DELETE_FAMILY_MEMORY': {
+      const { pid, id } = action.payload;
+      const current = state.settings.familyMemories?.[pid] || [];
+      return { ...state, settings: { ...state.settings, familyMemories: { ...state.settings.familyMemories, [pid]: current.filter(m => m.id !== id) } } };
+    }
     case '_SET_CONV_MESSAGES': {
       const { tabId, convId, messages } = action.payload;
       const t = state.tabs[tabId];
@@ -1588,6 +1647,11 @@ function AppProvider({ children }) {
     if (profileCtx?.trim()) {
       sysPrompt += '\n\n[CONTEXTE PERSONNEL]\n' + profileCtx.trim();
     }
+    // ── Mémoire familiale (faits retenus au fil des conversations) ──
+    const memories = state.settings.familyMemories?.[pid] || [];
+    if (memories.length) {
+      sysPrompt += '\n\n[MÉMOIRE FAMILIALE]\n' + memories.map(m => `• ${m.text}`).join('\n');
+    }
     const apiMsgs = [
       { role:'system', content: sysPrompt },
       ...conv.messages.filter(m => m.content || m.attachments?.length).map(m => ({ role:m.role, content:buildMsgContent(m) })),
@@ -1633,6 +1697,12 @@ function AppProvider({ children }) {
         } else if (pct >= 0.8 && !lsGet(warnKey80, false)) {
           lsSet(warnKey80, true);
           dispatch({ type:'SHOW_TOAST', payload:{ message:`⚠️ Budget à 80% pour ${profName} (${newCost.toFixed(2)}$/${budget}$)`, type:'warning', duration:5000 }});
+        }
+        // ── Mémoire familiale auto : extraction silencieuse tous les 3 échanges ──
+        const totalMsgs = conv.messages.length + 2; // +user +assistant de cet échange
+        if (state.settings.memoryAutoCapture !== false && totalMsgs % 6 === 0) {
+          extractFamilyMemory({ apiKey: state.settings.apiKey, pid, userMsg: content, assistantMsg: text, existing: state.settings.familyMemories?.[pid] })
+            .then(facts => { if (facts.length) dispatch({ type:'ADD_FAMILY_MEMORIES', payload:{ pid, facts, source:'auto' } }); });
         }
       },
       onError: errMsg => {
@@ -2680,12 +2750,7 @@ function ChatThread({ tabId }) {
   const confirmMemory = () => {
     if (!memoryDraft.trim()) { setMemorizingId(null); return; }
     const pid = state.profile;
-    const current = state.settings.profileContext?.[pid] || '';
-    const separator = current.trim() ? '\n\n' : '';
-    const newCtx = current + separator + '• ' + memoryDraft.trim();
-    const newSettings = { ...state.settings, profileContext: { ...state.settings.profileContext, [pid]: newCtx } };
-    dispatch({ type:'SET_SETTINGS', payload: newSettings });
-    saveSettings(newSettings);
+    dispatch({ type:'ADD_FAMILY_MEMORIES', payload:{ pid, facts:[memoryDraft.trim()], source:'manual' } });
     setMemorizingId(null);
     setMemoryDraft('');
     dispatch({ type:'SHOW_TOAST', payload:{ message:'📌 Mémorisé !', type:'info', duration:2500 } });
@@ -3664,6 +3729,36 @@ function FamilyTab() {
               );
             })}
           </div>
+
+          {/* Mémoire familiale des enfants */}
+          <div>
+            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>🧠 Mémoire familiale</div>
+            <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
+              {['zya','zelie'].map(kid => {
+                const kidProfile = getProfile(kid);
+                const mems = (state.settings.familyMemories?.[kid] || []).slice(-5).reverse();
+                return (
+                  <div key={kid} style={{ flex:'1 1 260px', minWidth:220, background:'white', border:`2px solid ${kidProfile?.color}44`, borderRadius:12, padding:'10px 14px' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                      <ProfileAvatar profile={kidProfile} size={24} />
+                      <span style={{ fontSize:12, fontWeight:700, color:kidProfile?.color }}>{kidProfile?.name}</span>
+                      <span style={{ fontSize:11, color:'#bbb' }}>{(state.settings.familyMemories?.[kid]||[]).length} souvenir(s)</span>
+                    </div>
+                    {mems.length === 0 ? (
+                      <div style={{ fontSize:12, color:'#bbb', fontStyle:'italic' }}>Rien de mémorisé pour l'instant</div>
+                    ) : (
+                      <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                        {mems.map(m => (
+                          <div key={m.id} style={{ fontSize:12, color:'#555', lineHeight:1.4 }}>• {m.text}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {['zya','zelie'].map(kid => {
             const kidProfile = getProfile(kid);
             const kidColor = kidProfile?.color;
@@ -4722,9 +4817,9 @@ function Settings() {
             )}
           </section>
 
-          {/* ── Mémoire & instructions personnelles ─────── */}
+          {/* ── Instructions personnalisées (statiques) ─── */}
           <section>
-            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>🧠 Mémoire & instructions</div>
+            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:10 }}>📝 Instructions personnalisées</div>
             <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
               {PROFILES.map(p => (
                 <div key={p.id}>
@@ -4737,6 +4832,51 @@ function Settings() {
                     style={{ width:'100%', padding:'7px 10px', border:`1.5px solid ${C.faint}`, borderRadius:8, fontSize:13, fontFamily:'Inter,sans-serif', resize:'vertical', outline:'none', background:C.paper, boxSizing:'border-box' }} />
                 </div>
               ))}
+            </div>
+          </section>
+
+          {/* ── Mémoire familiale (auto + manuelle) ──────── */}
+          <section>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+              <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888' }}>🧠 Mémoire familiale</div>
+              <button onClick={() => setS(prev => ({ ...prev, memoryAutoCapture: !prev.memoryAutoCapture }))}
+                title="Extraction automatique des faits importants après chaque conversation"
+                style={{ padding:'4px 12px', background: s.memoryAutoCapture !== false ? C.teal : '#f1eee5', color: s.memoryAutoCapture !== false ? 'white' : C.muted, border:`1.5px solid ${s.memoryAutoCapture !== false ? C.teal : C.faint}`, borderRadius:20, fontSize:12, cursor:'pointer', fontWeight:600 }}>
+                {s.memoryAutoCapture !== false ? '✓ Auto activée' : 'Auto désactivée'}
+              </button>
+            </div>
+            <div style={{ fontSize:12, color:'#999', marginBottom:12, lineHeight:1.5 }}>
+              Ricard retient automatiquement les faits durables évoqués en conversation (préférences, événements, contexte) et les réutilise pour personnaliser ses réponses.
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+              {PROFILES.map(p => {
+                const mems = s.familyMemories?.[p.id] || [];
+                return (
+                  <div key={p.id}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
+                      <ProfileAvatar profile={p} size={22} />
+                      <span style={{ fontSize:13, fontWeight:500 }}>{p.name}</span>
+                      <span style={{ fontSize:11, color:'#bbb' }}>{mems.length} souvenir{mems.length > 1 ? 's' : ''}</span>
+                    </div>
+                    {mems.length === 0 ? (
+                      <div style={{ fontSize:12, color:'#bbb', fontStyle:'italic', paddingLeft:30 }}>Rien de mémorisé pour l'instant</div>
+                    ) : (
+                      <div style={{ display:'flex', flexDirection:'column', gap:4, paddingLeft:30 }}>
+                        {mems.slice().reverse().map(m => (
+                          <div key={m.id} style={{ display:'flex', alignItems:'flex-start', gap:6, background:C.paper, border:`1px solid ${C.faint}`, borderRadius:8, padding:'6px 10px' }}>
+                            <span style={{ fontSize:12, flex:1, lineHeight:1.4 }}>{m.source === 'manual' ? '📌 ' : ''}{m.text}</span>
+                            <button onClick={() => {
+                              dispatch({ type:'DELETE_FAMILY_MEMORY', payload:{ pid:p.id, id:m.id } });
+                              setS(prev => ({ ...prev, familyMemories: { ...prev.familyMemories, [p.id]: (prev.familyMemories?.[p.id]||[]).filter(x => x.id !== m.id) } }));
+                            }} title="Oublier ce souvenir"
+                              style={{ background:'none', border:'none', cursor:'pointer', color:'#bbb', fontSize:13, flexShrink:0, padding:0, lineHeight:1 }}>×</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </section>
 
