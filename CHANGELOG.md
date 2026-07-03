@@ -5,6 +5,21 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [1.36.1] — 2026-07-03 · Hotfix critique : page blanche (Babel CDN)
+
+### Corrigé
+- **🚨 Page blanche sur toute la prod** : le CDN `unpkg.com/@babel/standalone/babel.min.js` (sans version figée) a été mis à jour côté unpkg vers **Babel Standalone 8.0.3**, une version majeure incompatible avec le mode d'exécution automatique `<script type="text/babel">` utilisé par l'app. Résultat : le script principal (JSX) n'était plus jamais transformé ni exécuté, silencieusement (aucune erreur console, `#root` restait vide).
+  - Cause : dépendance externe non versionnée (`@babel/standalone` sans tag de version → résout vers "latest")
+  - Fix : version figée sur `@babel/standalone@7` (dernière v7 stable, `7.29.7` au moment du fix)
+  - Diagnostic : confirmé en local — `Babel.version` renvoyait `8.0.3`, `APP_VERSION` n'était jamais défini (le script ne s'exécutait pas), `#root` avait 0 enfant malgré React/ReactDOM correctement chargés
+- Aucune régression : ni React (`react@18`) ni React-DOM (`react-dom@18`) n'étaient affectés, seul Babel Standalone était en cause
+
+### Technique
+- Version : `1.36.1` — SW cache : `ricard-ai-v36-1`
+- Recommandation : figer aussi `react@18` / `react-dom@18` sur une version mineure précise (`react@18.3.1`) pour éviter une régression similaire si une future v19 casse la compatibilité
+
+---
+
 ## [1.36] — 2026-05-30 · Revue de code + corrections de bugs
 
 ### Corrigé
