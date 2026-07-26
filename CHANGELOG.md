@@ -5,6 +5,21 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [1.39] — 2026-07-03 · Liste des modèles OpenRouter à jour par défaut
+
+### Corrigé
+- **🚨 Liste de modèles figée dans le code** : le sélecteur de modèle (`ModelPicker`) affichait par défaut une liste de 18 modèles écrite en dur (`const MODELS`), non maintenue depuis un moment (encore Claude Sonnet 4.5/4.6, GPT-4o, Gemini 2.5 Pro...). Le vrai catalogue OpenRouter à jour n'était accessible qu'en cliquant manuellement sur un bouton "🌐 Tous les modèles" — la plupart des utilisateurs ne le savaient pas et restaient sur la liste périmée.
+  - **Fix** : le `ModelPicker` récupère désormais automatiquement le catalogue OpenRouter en direct (`fetch https://openrouter.ai/api/v1/models`) dès l'ouverture, sans action requise.
+  - **Repli** : la liste figée `MODELS` ne sert plus que de secours si l'appel réseau échoue (message d'erreur affiché + mention explicite « repli — OpenRouter injoignable » en bas de la fenêtre).
+  - Le bouton "← Sélection" reste disponible pour revenir volontairement à la liste restreinte/curatée si besoin (ex: repères de prix simplifiés par catégorie).
+  - Bouton renommé selon le contexte : "🔄 Actualiser" (mode live), "🔄 Réessayer" (après un échec réseau), "🌐 Tous les modèles" (retour manuel au live depuis la sélection curatée).
+- Testé en local : ouverture du picker → 343 modèles OpenRouter chargés automatiquement, aucune erreur console.
+
+### Technique
+- Version : `1.39` — SW cache : `ricard-ai-v39`
+
+---
+
 ## [1.38] — 2026-07-03 · Agenda familial partagé (Google Calendar)
 
 ### Ajouté

@@ -404,7 +404,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.38';
+const APP_VERSION = '1.39';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -4569,21 +4569,6 @@ function ModelPicker() {
   const [sortPrice, setSortPrice] = useState(null); // null | 'asc' | 'desc'
   const ref = useRef(null);
 
-  useEffect(() => { if (state.showModelPicker && ref.current) ref.current.focus(); }, [state.showModelPicker]);
-  useEffect(() => {
-    const h = e => { if (e.key === 'Escape') dispatch({ type:'CLOSE_MODEL_PICKER' }); };
-    window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
-  }, []);
-
-  const isMobile = useIsMobile();
-
-  if (!state.showModelPicker) return null;
-
-  const tabId = state.tab;
-  const ts = state.tabs[tabId];
-  const current = ts?.convs.find(c => c.id === ts.activeId)?.model;
-  const isLive = Array.isArray(liveModels);
-
   const fetchLive = async () => {
     setLiveModels('loading');
     setLiveError('');
@@ -4609,10 +4594,30 @@ function ModelPicker() {
       mapped.forEach(m => { _modelCache[m.id] = m; });
       setLiveModels(mapped);
     } catch(e) {
-      setLiveError(e.message || 'Erreur inconnue');
+      setLiveError(e.message || 'Erreur inconnue — liste restreinte affichée en repli');
       setLiveModels(null);
     }
   };
+
+  useEffect(() => { if (state.showModelPicker && ref.current) ref.current.focus(); }, [state.showModelPicker]);
+  useEffect(() => {
+    const h = e => { if (e.key === 'Escape') dispatch({ type:'CLOSE_MODEL_PICKER' }); };
+    window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
+  }, []);
+  // Live OpenRouter par défaut à l'ouverture — la liste figée MODELS ne sert
+  // plus que de repli si l'appel réseau échoue (voir catch de fetchLive).
+  useEffect(() => {
+    if (state.showModelPicker && liveModels === null && !liveError) fetchLive();
+  }, [state.showModelPicker]);
+
+  const isMobile = useIsMobile();
+
+  if (!state.showModelPicker) return null;
+
+  const tabId = state.tab;
+  const ts = state.tabs[tabId];
+  const current = ts?.convs.find(c => c.id === ts.activeId)?.model;
+  const isLive = Array.isArray(liveModels);
 
   const sourceModels = isLive ? liveModels : MODELS;
 
@@ -4674,9 +4679,9 @@ function ModelPicker() {
                 ← Sélection
               </button>
             )}
-            <button onClick={isLive ? fetchLive : fetchLive}
+            <button onClick={fetchLive}
               style={{ background: isLive ? C.teal : C.ink, border:'none', borderRadius:20, padding:'3px 14px', fontSize:12, cursor:'pointer', color:'white', whiteSpace:'nowrap', fontWeight:600, display:'flex', alignItems:'center', gap:5 }}>
-              {liveModels === 'loading' ? '⏳ Chargement…' : isLive ? '🔄 Actualiser' : '🌐 Tous les modèles'}
+              {liveModels === 'loading' ? '⏳ Chargement…' : isLive ? '🔄 Actualiser' : liveError ? '🔄 Réessayer' : '🌐 Tous les modèles'}
             </button>
           </div>
         </div>
@@ -4713,7 +4718,7 @@ function ModelPicker() {
         </div>
 
         <div style={{ padding:'8px 14px', borderTop:`1px solid #f0ede4`, display:'flex', justifyContent:'space-between', fontSize:11, color:'#bbb' }}>
-          <span>{isLive ? `${filtered.length} / ${liveModels.length} modèles OpenRouter live` : `${MODELS.length} modèles sélectionnés`}</span>
+          <span>{isLive ? `${filtered.length} / ${liveModels.length} modèles OpenRouter live` : liveError ? `${MODELS.length} modèles (repli — OpenRouter injoignable)` : `${MODELS.length} modèles sélectionnés`}</span>
           <span>Esc pour fermer</span>
         </div>
       </div>
