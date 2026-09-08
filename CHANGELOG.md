@@ -5,6 +5,26 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [1.40] — 2026-09-08 · Z.AI (GLM) par défaut, OpenRouter en option
+
+### Ajouté
+- **⚡ Z.AI (GLM) devient le fournisseur IA par défaut** : l'app appelle désormais `https://api.z.ai/api/paas/v4/chat/completions` (API compatible OpenAI) avec une clé Z.AI. OpenRouter reste disponible en un clic dans les Réglages (bouton ⚡ Z.AI / 🌐 OpenRouter).
+- **Catalogue GLM intégré** (11 modèles) dans le sélecteur et les modèles par défaut :
+  - Gratuits : `glm-4.7-flash`, `glm-4.5-flash`, `glm-4.6v-flash` (vision)
+  - Pas cher : `glm-5.3-flash`, `glm-4.5-air`, `glm-4.7` (défaut), `glm-4.6`
+  - Performant : `glm-5.2`, `glm-5.3` · Vision : `glm-4.6v`, `glm-4.5v`
+- **Illustrations Z.AI** : CogView-4 (défaut) et GLM-Image via `images/generations` Z.AI. Le catalogue DALL·E/Flux/SDXL reste proposé quand OpenRouter est actif.
+- **Détection automatique du fournisseur selon la clé** : une clé `sk-or-v1-…` bascule l'app sur OpenRouter ; tout autre format → Z.AI. Migration invisible pour les appareils existants.
+- **Réglage `provider` synchronisé via Firebase** sur tous les appareils de la famille.
+
+### Technique
+- Couche `PROVIDERS` (URLs, headers `HTTP-Referer`/`X-Title` OpenRouter uniquement, liens de clés) routée dans tous les appels : chat streaming, comparaison, condensation, résumé WhatsApp, fiches de révision, mémoire familiale auto, génération d'images.
+- `sanitizeModelForProvider()` remappe automatiquement les modèles par défaut et les conversations existantes vers un modèle valide du fournisseur actif (aucune conversation cassée).
+- La mémoire familiale auto utilise `glm-4.7-flash` (gratuit) sur Z.AI au lieu de `gpt-4o-mini`.
+- Version : `1.40` — SW cache : `ricard-ai-v40`
+
+---
+
 ## [1.39] — 2026-07-03 · Liste des modèles OpenRouter à jour par défaut
 
 ### Corrigé

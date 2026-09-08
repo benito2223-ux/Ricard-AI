@@ -264,7 +264,7 @@ async function cloudSave(pid, tab, convs) {
 // ─── Sync config famille via Firebase (clé API + réglages) ───
 // Champs synchronisés entre tous les appareils de la famille
 const SHARED_SETTINGS_KEYS = [
-  'apiKey', 'defaultModels', 'defaultImageModel',
+  'apiKey', 'provider', 'defaultModels', 'defaultImageModel',
   'budgets', 'dailyLimits', 'accessHours', 'dailyGoals',
   'socraticMode', 'profileContext', 'profileCodes',
   'appCode', 'autoLockMinutes',
@@ -404,7 +404,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.39';
+const APP_VERSION = '1.40';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -425,6 +425,76 @@ const C = {
   green:'#4CAF50', pink:'#FF0099', purple:'#9B4DCA',
   orange:'#FF6B00', teal:'#00C8D0',
 };
+
+// ─── Fournisseurs IA — Z.AI (GLM) par défaut, OpenRouter en option ───
+const PROVIDERS = {
+  zai: {
+    id: 'zai', label: 'Z.AI (GLM)', short: 'Z.AI',
+    chatUrl:  () => 'https://api.z.ai/api/paas/v4/chat/completions',
+    imageUrl: () => 'https://api.z.ai/api/paas/v4/images/generations',
+    keyUrl: 'https://z.ai/manage-apikey/apikey-list',
+    keyPlaceholder: 'Collez votre clé Z.AI…',
+    extraHeaders: {},
+  },
+  openrouter: {
+    id: 'openrouter', label: 'OpenRouter', short: 'OpenRouter',
+    chatUrl:  () => 'https://openrouter.ai/api/v1/chat/completions',
+    imageUrl: () => 'https://openrouter.ai/api/v1/images/generations',
+    keyUrl: 'https://openrouter.ai/keys',
+    keyPlaceholder: 'sk-or-v1-…',
+    extraHeaders: { 'HTTP-Referer': location.origin, 'X-Title': 'Ricard AI' },
+  },
+};
+const DEFAULT_PROVIDER = 'zai';
+
+// ─── Catalogue Z.AI (GLM) — pas de listing public, liste figée ───
+const ZAI_MODELS = [
+  // ── Gratuit ──
+  { id:'glm-4.7-flash',  name:'GLM-4.7 Flash',   provider:'Z.AI', cat:'gratuit',    speed:3, ctx:'128k', inCost:0,    outCost:0,   note:'Gratuit · rapide & très capable' },
+  { id:'glm-4.5-flash',  name:'GLM-4.5 Flash',   provider:'Z.AI', cat:'gratuit',    speed:3, ctx:'128k', inCost:0,    outCost:0,   note:'Gratuit · open source' },
+  { id:'glm-4.6v-flash', name:'GLM-4.6V Flash',  provider:'Z.AI', cat:'gratuit',    speed:3, ctx:'128k', inCost:0,    outCost:0,   note:'Gratuit · vision (photos)', vision:true },
+  // ── Pas cher ──
+  { id:'glm-5.3-flash',  name:'GLM-5.3 Flash',   provider:'Z.AI', cat:'pas-cher',   speed:3, ctx:'1M',   inCost:0.15, outCost:0.5, note:'Ultra rapide · vision', vision:true },
+  { id:'glm-4.5-air',    name:'GLM-4.5 Air',     provider:'Z.AI', cat:'pas-cher',   speed:3, ctx:'128k', inCost:0.2,  outCost:1.1, note:'Léger & économique' },
+  { id:'glm-4.7',        name:'GLM-4.7',         provider:'Z.AI', cat:'pas-cher',   speed:2, ctx:'200k', inCost:0.6,  outCost:2.2, note:'Équilibré · excellent en français', isDefault:true },
+  { id:'glm-4.6',        name:'GLM-4.6',         provider:'Z.AI', cat:'pas-cher',   speed:2, ctx:'200k', inCost:0.6,  outCost:2.2, note:'Fiable · raisonnement' },
+  // ── Performant ──
+  { id:'glm-5.2',        name:'GLM-5.2',         provider:'Z.AI', cat:'performant', speed:2, ctx:'1M',   inCost:1.4,  outCost:4.4, note:'Contexte 1M · tâches longues' },
+  { id:'glm-5.3',        name:'GLM-5.3',         provider:'Z.AI', cat:'performant', speed:2, ctx:'1M',   inCost:1.4,  outCost:4.4, note:'Flagship · code & agents' },
+  // ── Vision ──
+  { id:'glm-4.6v',       name:'GLM-4.6V',        provider:'Z.AI', cat:'vision',     speed:2, ctx:'128k', inCost:0.3,  outCost:0.9, note:'Vision · photos & documents', vision:true },
+  { id:'glm-4.5v',       name:'GLM-4.5V',        provider:'Z.AI', cat:'vision',     speed:2, ctx:'64k',  inCost:0.6,  outCost:1.8, note:'Vision multimodal', vision:true },
+];
+const ZAI_IMAGE_MODELS = [
+  { id:'cogview-4', name:'CogView-4', by:'Z.AI', size:'1024×1024' },
+  { id:'glm-image', name:'GLM-Image', by:'Z.AI', size:'1024×1024' },
+];
+
+const DEFAULT_MODELS_BY_PROVIDER = {
+  zai:        { chat:'glm-4.7', code:'glm-4.7', design:'glm-4.7', zya:'glm-4.7-flash', zelie:'glm-4.7-flash' },
+  openrouter: { chat:'anthropic/claude-haiku-4-5', code:'qwen/qwen-2.5-coder-32b-instruct', design:'anthropic/claude-haiku-4-5', zya:'anthropic/claude-haiku-4-5', zelie:'google/gemini-flash-1.5' },
+};
+
+function providerCatalog(pid) { return pid === 'zai' ? ZAI_MODELS : MODELS; }
+function guessProviderFromKey(key) {
+  if (!key) return DEFAULT_PROVIDER;
+  if (key.startsWith('sk-or-')) return 'openrouter';
+  if (/^[0-9a-f]{16,}\./i.test(key)) return 'zai';
+  return DEFAULT_PROVIDER;
+}
+function getActiveProviderId() {
+  const s = lsGet('settings', {}) || {};
+  if (s.provider && PROVIDERS[s.provider]) return s.provider;
+  return guessProviderFromKey(s.apiKey || lsGet('apikey_backup', ''));
+}
+function getActiveProvider() { return PROVIDERS[getActiveProviderId()] || PROVIDERS[DEFAULT_PROVIDER]; }
+// Un modèle n'est utilisable que s'il appartient au catalogue du fournisseur actif.
+// OpenRouter : catalogue live infini → on fait confiance à l'ID tel quel.
+function sanitizeModelForProvider(modelId, prov) {
+  if (!modelId) return null;
+  if (prov !== 'zai') return modelId;
+  return ZAI_MODELS.some(m => m.id === modelId) ? modelId : null;
+}
 
 // ─── Models ─────────────────────────────────────────────────
 const MODELS = [
@@ -462,8 +532,8 @@ const MODEL_CATS = [
   { id:'vision', label:'Vision', color:C.teal },
 ];
 const CAT_COLOR = { gratuit:C.green, 'pas-cher':C.blue, performant:C.orange, code:C.purple, premium:C.red, vision:C.teal };
-const DEFAULT_MODEL = 'anthropic/claude-haiku-4-5';
-const DEFAULT_CODE_MODEL = 'qwen/qwen-2.5-coder-32b-instruct';
+const DEFAULT_MODEL = DEFAULT_MODELS_BY_PROVIDER[DEFAULT_PROVIDER].chat;
+const DEFAULT_CODE_MODEL = DEFAULT_MODELS_BY_PROVIDER[DEFAULT_PROVIDER].code;
 
 // ─── Kids content filter ──────────────────────────────────────
 const KIDS_BLOCKED = [
@@ -493,7 +563,8 @@ function buildMsgContent(msg) {
 
 const _modelCache = {};
 function getModel(id) {
-  return MODELS.find(m => m.id === id) || _modelCache[id] || (id ? { id, name: id.split('/').pop(), provider: id.split('/')[0], inCost: 0, outCost: 0, ctx:'?', speed:2 } : MODELS[2]);
+  return MODELS.find(m => m.id === id) || ZAI_MODELS.find(m => m.id === id) || _modelCache[id]
+    || (id ? { id, name: id.includes('/') ? id.split('/').pop() : id, provider: id.includes('/') ? id.split('/')[0] : 'Z.AI', inCost: 0, outCost: 0, ctx:'?', speed:2 } : ZAI_MODELS.find(m => m.id === DEFAULT_MODEL) || MODELS[2]);
 }
 
 // ─── Cache global des modèles OpenRouter live ─────────────────
@@ -547,13 +618,15 @@ async function fetchAllModels() {
 
 // Hook React pour accéder aux modèles live (avec fallback local)
 function useLiveModels() {
+  const isZai = getActiveProviderId() === 'zai';
   const [models, setModels] = useState(() =>
-    Array.isArray(_liveModelsCache) ? _liveModelsCache : MODELS
+    isZai ? ZAI_MODELS : (Array.isArray(_liveModelsCache) ? _liveModelsCache : MODELS)
   );
   const [status, setStatus] = useState(() =>
-    Array.isArray(_liveModelsCache) ? 'done' : 'idle'
+    isZai ? 'done' : (Array.isArray(_liveModelsCache) ? 'done' : 'idle')
   );
   useEffect(() => {
+    if (isZai) { setModels(ZAI_MODELS); setStatus('done'); return; }
     if (Array.isArray(_liveModelsCache)) { setModels(_liveModelsCache); setStatus('done'); return; }
     setStatus('loading');
     fetchAllModels().then(m => {
@@ -730,17 +803,28 @@ function lsSet(key, val) {
   }
 }
 
-const DEFAULT_MODELS_PER_TAB = {
-  chat:   'anthropic/claude-haiku-4-5',
-  code:   'qwen/qwen-2.5-coder-32b-instruct',
-  design: 'anthropic/claude-haiku-4-5',
-  zya:    'anthropic/claude-haiku-4-5',
-  zelie:  'google/gemini-flash-1.5',
-};
+const DEFAULT_MODELS_PER_TAB = DEFAULT_MODELS_BY_PROVIDER[DEFAULT_PROVIDER];
+
+// Remap les modèles par défaut vers le catalogue du fournisseur actif
+function sanitizeDefaultModels(dm, prov) {
+  const base = DEFAULT_MODELS_BY_PROVIDER[prov] || DEFAULT_MODELS_BY_PROVIDER[DEFAULT_PROVIDER];
+  const out = {};
+  Object.keys(base).forEach(t => {
+    const wanted = dm?.[t] || base[t];
+    out[t] = sanitizeModelForProvider(wanted, prov) || base[t];
+  });
+  return out;
+}
+function sanitizeImageModel(img, prov) {
+  if (prov !== 'zai') return img || 'openai/dall-e-3';
+  return (img && ZAI_IMAGE_MODELS.some(m => m.id === img)) ? img : 'cogview-4';
+}
 function loadSettings() {
   const s = lsGet('settings', {});
   // Double sécurité : clé API sauvegardée aussi séparément
   const apiKey = s.apiKey || lsGet('apikey_backup', '') || '';
+  // Fournisseur IA : Z.AI (GLM) par défaut ; OpenRouter détecté si la clé le trahit
+  const provider = (s.provider && PROVIDERS[s.provider]) ? s.provider : guessProviderFromKey(apiKey);
   // Migration : adminPin → profileCodes parents (rétro-compatibilité v1.13→v1.14)
   const legacyPin = s.adminPin ?? '';
   const profileCodes = s.profileCodes ?? {
@@ -751,12 +835,13 @@ function loadSettings() {
   };
   return {
     apiKey,
+    provider,
     budgets:         s.budgets         ?? { papa:50, maman:50, zya:5, zelie:5 },
     adminPin:        legacyPin,          // conservé pour rétro-compat
     profileCodes,
     appCode:         s.appCode         ?? '',
     autoLockMinutes: s.autoLockMinutes ?? 0,
-    defaultModels:   s.defaultModels   ?? { ...DEFAULT_MODELS_PER_TAB },
+    defaultModels:   sanitizeDefaultModels(s.defaultModels, provider),
     profileContext:  s.profileContext  ?? { papa:'', maman:'', zya:'', zelie:'' },
     familyMemories:  s.familyMemories  ?? { papa:[], maman:[], zya:[], zelie:[] },
     memoryAutoCapture: s.memoryAutoCapture ?? true,
@@ -768,7 +853,7 @@ function loadSettings() {
       zelie: { enabled:false, start:'08:00', end:'21:00' },
     },
     dailyGoals:        s.dailyGoals        ?? { zya:'', zelie:'' },
-    defaultImageModel: s.defaultImageModel ?? 'openai/dall-e-3',
+    defaultImageModel: sanitizeImageModel(s.defaultImageModel, provider),
   };
 }
 function dateKey() { const d = new Date(); return `${d.getFullYear()}_${d.getMonth()+1}_${d.getDate()}`; }
@@ -834,11 +919,11 @@ async function streamChat({ apiKey, model, messages, onChunk, onDone, onError, s
   const isMobileUA = /iPad|iPhone|iPod|Android|Mobile|CriOS|FxiOS/i.test(navigator.userAgent)
                   || window.innerWidth < 768;
 
+  const prov = getActiveProvider();
   const HEADERS = {
     'Authorization': `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
-    'HTTP-Referer': location.origin,
-    'X-Title': 'Ricard AI',
+    ...prov.extraHeaders,
   };
 
   // ── Mode mobile : JSON sans signal (évite les aborts iOS sur viewport resize) ──
@@ -853,7 +938,7 @@ async function streamChat({ apiKey, model, messages, onChunk, onDone, onError, s
       if (signal?.aborted) return;
       let resp;
       try {
-        resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        resp = await fetch(prov.chatUrl(), {
           method: 'POST', headers: HEADERS, body: BODY,
           // Pas de signal sur mobile : iOS avorte resp.text() sur resize/background
         });
@@ -920,7 +1005,7 @@ async function streamChat({ apiKey, model, messages, onChunk, onDone, onError, s
   // ── Mode desktop : streaming SSE (avec signal AbortController) ─
   let resp;
   try {
-    resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    resp = await fetch(prov.chatUrl(), {
       method: 'POST', headers: HEADERS,
       body: JSON.stringify({ model, messages, stream: true }),
       signal,
@@ -1099,17 +1184,17 @@ const IMAGE_MODELS = [
 ];
 
 async function generateImage({ apiKey, model, prompt, onDone, onError }) {
+  const prov = getActiveProvider();
   try {
-    const res = await fetch('https://openrouter.ai/api/v1/images/generations', {
+    const res = await fetch(prov.imageUrl(), {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': location.origin,
-        'X-Title': 'Ricard AI',
+        ...prov.extraHeaders,
       },
       body: JSON.stringify({
-        model: model || 'openai/dall-e-3',
+        model: model || (prov.id === 'zai' ? 'cogview-4' : 'openai/dall-e-3'),
         prompt,
         n: 1,
         size: '1024x1024',
@@ -1148,12 +1233,13 @@ Règles :
 - Maximum 2 faits par échange. Formule chaque fait en une phrase courte et neutre, en français.
 - Si rien de notable, réponds avec une liste vide.
 Réponds UNIQUEMENT avec ce JSON, rien d'autre : {"facts": ["fait 1", "fait 2"]} ou {"facts": []}`;
+  const prov = getActiveProvider();
   try {
-    const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const resp = await fetch(prov.chatUrl(), {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': location.origin, 'X-Title': 'Ricard AI' },
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json', ...prov.extraHeaders },
       body: JSON.stringify({
-        model: 'openai/gpt-4o-mini',
+        model: prov.id === 'zai' ? 'glm-4.7-flash' : 'openai/gpt-4o-mini',
         messages: [
           { role:'system', content: sys },
           { role:'user', content: `Utilisateur : ${(userMsg || '').slice(0, 800)}\n\nRéponse : ${(assistantMsg || '').slice(0, 800)}` },
@@ -1336,12 +1422,13 @@ function getWelcomeMsg(pid) {
 // ─── App State ───────────────────────────────────────────────
 const TABS = ['chat','code','zya','zelie'];
 function newConv(tabId, settings) {
-  const dm = settings?.defaultModels ?? DEFAULT_MODELS_PER_TAB;
+  const provId = settings?.provider || getActiveProviderId();
+  const dm = settings?.defaultModels ?? DEFAULT_MODELS_BY_PROVIDER[provId] ?? DEFAULT_MODELS_PER_TAB;
   return {
     id: uuid(), tabId,
     title: 'Nouvelle conversation',
     messages: [],
-    model: dm[tabId] ?? DEFAULT_MODEL,
+    model: sanitizeModelForProvider(dm[tabId], provId) || DEFAULT_MODELS_BY_PROVIDER[provId]?.[tabId] || DEFAULT_MODEL,
     createdAt: Date.now(),
     totalIn: 0, totalOut: 0, totalCost: 0,
     pinned: false,
@@ -1768,10 +1855,12 @@ function AppProvider({ children }) {
 
     const controller = new AbortController();
     if (abortRef) abortRef.current = controller;
+    const provId = getActiveProviderId();
+    const modelId = sanitizeModelForProvider(conv.model, provId) || DEFAULT_MODELS_BY_PROVIDER[provId]?.[t] || DEFAULT_MODEL;
 
     await streamChat({
       apiKey: state.settings.apiKey,
-      model: conv.model,
+      model: modelId,
       messages: apiMsgs,
       signal: controller.signal,
       onChunk: (_d, full) => {
@@ -1780,10 +1869,10 @@ function AppProvider({ children }) {
       onDone: ({ text, inputTokens, outputTokens }) => {
         dispatch({ type:'UPDATE_ASSISTANT', payload:{ tabId:t, content:text, inTk:inputTokens, outTk:outputTokens, done:true } });
         dispatch({ type:'SET_STREAMING', payload:false });
-        const cost = estimateCost(conv.model, inputTokens, outputTokens);
+        const cost = estimateCost(modelId, inputTokens, outputTokens);
         const newCost = addMonthCost(state.profile, cost);
         dispatch({ type:'SET_MONTH_COST', payload: newCost });
-        appendCostLog({ ts:Date.now(), profile:state.profile, tab:t, model:conv.model, inputTokens, outputTokens, cost });
+        appendCostLog({ ts:Date.now(), profile:state.profile, tab:t, model:modelId, inputTokens, outputTokens, cost });
         // ── Alertes budget ──────────────────────────────────
         const pid = state.profile;
         const budget = state.settings.budgets?.[pid] || 50;
@@ -2434,7 +2523,7 @@ function ChatHeader({ tabId, title, icon, accentColor }) {
     let summary = '';
     await streamChat({
       apiKey: state.settings.apiKey,
-      model: conv.model,
+      model: sanitizeModelForProvider(conv.model, getActiveProviderId()) || DEFAULT_MODEL,
       messages: apiMsgs,
       onChunk: (_d, full) => { summary = full; },
       onDone: ({ text }) => {
@@ -2515,6 +2604,8 @@ function ChatHeader({ tabId, title, icon, accentColor }) {
 
 // ─── Image Model Picker Modal ─────────────────────────────────
 function ImageModelPickerModal({ current, onSelect, onClose }) {
+  const isZai = getActiveProviderId() === 'zai';
+  const FEATURED_IMAGE_MODELS = isZai ? ZAI_IMAGE_MODELS : IMAGE_MODELS;
   const [tab, setTab]       = useState('featured');   // 'featured' | 'catalog'
   const [search, setSearch] = useState('');
   const [liveModels, setLiveModels] = useState(() => Array.isArray(_liveModelsCache) ? _liveModelsCache : null);
@@ -2541,7 +2632,7 @@ function ImageModelPickerModal({ current, onSelect, onClose }) {
   }, [tab]);
 
   // ── Onglet Recommandés ──
-  const featuredFiltered = IMAGE_MODELS.filter(m => {
+  const featuredFiltered = FEATURED_IMAGE_MODELS.filter(m => {
     if (!search) return true;
     const q = search.toLowerCase();
     return m.name.toLowerCase().includes(q) || m.by.toLowerCase().includes(q) || m.id.toLowerCase().includes(q);
@@ -2566,7 +2657,7 @@ function ImageModelPickerModal({ current, onSelect, onClose }) {
   );
 
   const ModelRow = ({ m, isFeatured }) => {
-    const isActive = (current || 'openai/dall-e-3') === m.id;
+    const isActive = (current || (isZai ? 'cogview-4' : 'openai/dall-e-3')) === m.id;
     return (
       <button onClick={() => { onSelect(m.id); onClose(); }}
         style={{ width:'100%', textAlign:'left', padding:'10px 14px', border:'none', borderBottom:`1px solid #e8e5dc`, background: isActive ? '#f3e8ff' : 'white', cursor:'pointer', display:'flex', alignItems:'center', gap:10, transition:'background .1s' }}
@@ -2621,8 +2712,8 @@ function ImageModelPickerModal({ current, onSelect, onClose }) {
 
         {/* Tabs */}
         <div style={{ display:'flex', borderBottom:`1.5px solid #e8e5dc`, background:'white' }}>
-          <TabBtn id="featured" label="⭐ Recommandés" count={IMAGE_MODELS.length} />
-          <TabBtn id="catalog"  label="🌐 Catalogue OpenRouter" count={tab==='catalog' && !loading ? catalogFiltered.length : null} />
+          <TabBtn id="featured" label="⭐ Recommandés" count={FEATURED_IMAGE_MODELS.length} />
+          {!isZai && <TabBtn id="catalog"  label="🌐 Catalogue OpenRouter" count={tab==='catalog' && !loading ? catalogFiltered.length : null} />}
         </div>
 
         {/* Liste */}
@@ -2647,7 +2738,8 @@ function ImageModelPickerModal({ current, onSelect, onClose }) {
           )}
         </div>
 
-        {/* ID personnalisé */}
+        {/* ID personnalisé (OpenRouter uniquement) */}
+        {!isZai && (
         <div style={{ padding:'10px 14px', borderTop:`1.5px solid #e8e5dc`, background:'white' }}>
           <div style={{ fontSize:11, color:'#aaa', marginBottom:5 }}>Ou colle directement un ID OpenRouter :</div>
           <div style={{ display:'flex', gap:6 }}>
@@ -2662,6 +2754,7 @@ function ImageModelPickerModal({ current, onSelect, onClose }) {
             </button>
           </div>
         </div>
+        )}
       </div>
     </>
   );
@@ -2827,11 +2920,12 @@ function ChatThread({ tabId }) {
     if (!apiKey) { setSummarizing(false); return; }
     const convText = messages.map(m => `${m.role === 'user' ? 'Moi' : 'IA'}: ${m.content || ''}`).join('\n\n').slice(0, 5000);
     try {
-      const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      const prov = getActiveProvider();
+      const resp = await fetch(prov.chatUrl(), {
         method:'POST',
         headers:{ 'Authorization':`Bearer ${apiKey}`, 'Content-Type':'application/json' },
         body: JSON.stringify({
-          model: conv?.model || 'openai/gpt-4o-mini',
+          model: conv?.model || (prov.id === 'zai' ? 'glm-4.7-flash' : 'openai/gpt-4o-mini'),
           messages:[
             { role:'system', content:'Tu résumes des conversations en 3 bullet points courts en français. Format : "• point". Sois direct et concis. Pas d\'intro ni de conclusion.' },
             { role:'user', content:`Résume cette conversation en 3 points clés :\n\n${convText}` }
@@ -3082,7 +3176,7 @@ function InputArea({ tabId, placeholder, socratic }) {
     // ── Mode génération d'image ──────────────────────────
     if (imageMode && text.trim()) {
       const prompt = text.trim();
-      const imgModel = state.settings.defaultImageModel || 'openai/dall-e-3';
+      const imgModel = state.settings.defaultImageModel || (getActiveProviderId() === 'zai' ? 'cogview-4' : 'openai/dall-e-3');
       const userMsgId = uuid();
       const imgMsgId  = uuid();
       // Message utilisateur
@@ -3123,7 +3217,7 @@ function InputArea({ tabId, placeholder, socratic }) {
     <div style={{ padding: isMobile ? '10px 12px' : '12px 16px', paddingBottom: isMobile ? 'max(10px, calc(env(safe-area-inset-bottom, 0px) + 6px))' : '12px', borderTop:`1.5px solid #e8e5dc`, background:'white', flexShrink:0 }}>
       {!hasKey && (
         <div style={{ marginBottom:8, padding:'8px 12px', background:'#fff5e6', border:`1px solid ${C.orange}`, borderRadius:8, fontSize:12, color:'#c07030', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-          <span>Clé API OpenRouter requise pour envoyer des messages.</span>
+          <span>Clé API requise pour envoyer des messages (Z.AI ou OpenRouter).</span>
           <button onClick={() => dispatch({ type:'TOGGLE_SETTINGS' })} style={{ background:C.orange, border:'none', borderRadius:6, color:'white', padding:'3px 10px', fontSize:12, cursor:'pointer', fontWeight:600 }}>Configurer →</button>
         </div>
       )}
@@ -3474,11 +3568,12 @@ function FlashcardsModal({ conv, apiKey, onClose }) {
     const msgs = conv?.messages || [];
     if (!msgs.length) { setError('Pas de conversation à analyser.'); setLoading(false); return; }
     const convText = msgs.map(m => `${m.role === 'user' ? 'Zya' : 'Nova'}: ${m.content || ''}`).join('\n\n').slice(0, 5000);
-    fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const prov = getActiveProvider();
+    fetch(prov.chatUrl(), {
       method:'POST',
       headers:{ 'Authorization':`Bearer ${apiKey}`, 'Content-Type':'application/json' },
       body: JSON.stringify({
-        model: conv?.model || 'openai/gpt-4o-mini',
+        model: conv?.model || (prov.id === 'zai' ? 'glm-4.7-flash' : 'openai/gpt-4o-mini'),
         messages:[
           { role:'system', content:'Tu crées des fiches de révision en JSON. Format: {"cards":[{"q":"question","a":"réponse"},...]}. 6 à 10 fiches max. Questions concises, réponses claires. JSON pur, pas de markdown.' },
           { role:'user', content:`Génère des fiches de révision à partir de cette conversation d\'étude:\n\n${convText}` }
@@ -4395,8 +4490,8 @@ function ModelSlot({ label, selected, onSelect, allModels, loading }) {
 
 function CompareModal() {
   const { state, dispatch } = useApp();
-  const [modelA, setModelA] = useState(DEFAULT_MODEL);
-  const [modelB, setModelB] = useState('openai/gpt-4o-mini');
+  const [modelA, setModelA] = useState(() => sanitizeModelForProvider(DEFAULT_MODEL, getActiveProviderId()) || DEFAULT_MODEL);
+  const [modelB, setModelB] = useState(() => getActiveProviderId() === 'zai' ? 'glm-4.6' : 'openai/gpt-4o-mini');
   const [prompt, setPrompt] = useState('');
   const [resA, setResA] = useState('');
   const [resB, setResB] = useState('');
@@ -4569,7 +4664,9 @@ function ModelPicker() {
   const [sortPrice, setSortPrice] = useState(null); // null | 'asc' | 'desc'
   const ref = useRef(null);
 
+  const isZai = getActiveProviderId() === 'zai';
   const fetchLive = async () => {
+    if (isZai) return; // Z.AI : catalogue figé ZAI_MODELS, pas de listing live
     setLiveModels('loading');
     setLiveError('');
     try {
@@ -4607,7 +4704,7 @@ function ModelPicker() {
   // Live OpenRouter par défaut à l'ouverture — la liste figée MODELS ne sert
   // plus que de repli si l'appel réseau échoue (voir catch de fetchLive).
   useEffect(() => {
-    if (state.showModelPicker && liveModels === null && !liveError) fetchLive();
+    if (!isZai && state.showModelPicker && liveModels === null && !liveError) fetchLive();
   }, [state.showModelPicker]);
 
   const isMobile = useIsMobile();
@@ -4619,7 +4716,7 @@ function ModelPicker() {
   const current = ts?.convs.find(c => c.id === ts.activeId)?.model;
   const isLive = Array.isArray(liveModels);
 
-  const sourceModels = isLive ? liveModels : MODELS;
+  const sourceModels = isLive ? liveModels : (isZai ? ZAI_MODELS : MODELS);
 
   const filtered = sourceModels
     .filter(m => {
@@ -4679,10 +4776,12 @@ function ModelPicker() {
                 ← Sélection
               </button>
             )}
+            {!isZai && (
             <button onClick={fetchLive}
               style={{ background: isLive ? C.teal : C.ink, border:'none', borderRadius:20, padding:'3px 14px', fontSize:12, cursor:'pointer', color:'white', whiteSpace:'nowrap', fontWeight:600, display:'flex', alignItems:'center', gap:5 }}>
               {liveModels === 'loading' ? '⏳ Chargement…' : isLive ? '🔄 Actualiser' : liveError ? '🔄 Réessayer' : '🌐 Tous les modèles'}
             </button>
+            )}
           </div>
         </div>
 
@@ -4718,7 +4817,7 @@ function ModelPicker() {
         </div>
 
         <div style={{ padding:'8px 14px', borderTop:`1px solid #f0ede4`, display:'flex', justifyContent:'space-between', fontSize:11, color:'#bbb' }}>
-          <span>{isLive ? `${filtered.length} / ${liveModels.length} modèles OpenRouter live` : liveError ? `${MODELS.length} modèles (repli — OpenRouter injoignable)` : `${MODELS.length} modèles sélectionnés`}</span>
+          <span>{isZai ? `${filtered.length} modèles Z.AI (GLM)` : isLive ? `${filtered.length} / ${liveModels.length} modèles OpenRouter live` : liveError ? `${MODELS.length} modèles (repli — OpenRouter injoignable)` : `${MODELS.length} modèles sélectionnés`}</span>
           <span>Esc pour fermer</span>
         </div>
       </div>
@@ -4786,6 +4885,7 @@ function SettingsImageModelSection({ s, setS }) {
 function Settings() {
   const { state, dispatch } = useApp();
   const [s, setS] = useState(() => ({ ...state.settings }));
+  const provS = s.provider && PROVIDERS[s.provider] ? s.provider : DEFAULT_PROVIDER;
   const [showKey, setShowKey] = useState(false);
   const [saved, setSaved] = useState(false);
   const [fbCfgText, setFbCfgText] = useState(() => {
@@ -4831,8 +4931,34 @@ function Settings() {
         </div>
         <div style={{ overflow:'auto', padding:'16px 18px', display:'flex', flexDirection:'column', gap:20 }}>
           <section>
+            <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:8 }}>⚡ Fournisseur IA</div>
+            <div style={{ display:'flex', gap:8 }}>
+              {Object.values(PROVIDERS).map(p => {
+                const on = provS === p.id;
+                return (
+                  <button key={p.id}
+                    onClick={() => setS(prev => {
+                      const base = DEFAULT_MODELS_BY_PROVIDER[p.id];
+                      const dm = { ...(prev.defaultModels || base) };
+                      Object.keys(dm).forEach(t2 => { dm[t2] = sanitizeModelForProvider(dm[t2], p.id) || base[t2] || dm[t2]; });
+                      const img = p.id === 'zai'
+                        ? (ZAI_IMAGE_MODELS.some(m => m.id === prev.defaultImageModel) ? prev.defaultImageModel : 'cogview-4')
+                        : (prev.defaultImageModel || 'openai/dall-e-3');
+                      return { ...prev, provider: p.id, defaultModels: dm, defaultImageModel: img };
+                    })}
+                    style={{ flex:1, padding:'9px 10px', border:`2px solid ${on ? C.teal : C.faint}`, borderRadius:8, background: on ? '#e6f7f8' : 'white', cursor:'pointer', fontSize:13, fontWeight: on ? 700 : 400, color: on ? '#00838f' : '#666', fontFamily:'var(--pc-font-body)' }}>
+                    {p.id === 'zai' ? '⚡ Z.AI (GLM)' : '🌐 OpenRouter'}{on ? ' ✓' : ''}
+                  </button>
+                );
+              })}
+            </div>
+            <p style={{ fontSize:11, color:'#aaa', margin:'6px 0 0' }}>
+              Z.AI (GLM) est le fournisseur par défaut. OpenRouter reste disponible en un clic pour tous les autres modèles.
+            </p>
+          </section>
+          <section>
             <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:8, display:'flex', alignItems:'center', gap:8 }}>
-              Clé API OpenRouter
+              Clé API — {PROVIDERS[provS].label}
               {CLOUD.enabled && (
                 <span title="Synchronisée sur tous les appareils famille via Firebase"
                   style={{ fontSize:11, background:'#e8f5e9', color:C.green, borderRadius:4, padding:'1px 6px', fontWeight:600, display:'flex', alignItems:'center', gap:3 }}>
@@ -4841,12 +4967,12 @@ function Settings() {
               )}
             </div>
             <div style={{ display:'flex', gap:8 }}>
-              <input type={showKey ? 'text' : 'password'} value={s.apiKey || ''} onChange={e => { const k = e.target.value; setS(p => ({ ...p, apiKey:k })); if (k) { lsSet('apikey_backup', k); } }} placeholder="sk-or-v1-…"
+              <input type={showKey ? 'text' : 'password'} value={s.apiKey || ''} onChange={e => { const k = e.target.value; setS(p => ({ ...p, apiKey:k })); if (k) { lsSet('apikey_backup', k); } }} placeholder={PROVIDERS[provS].keyPlaceholder}
                 style={{ flex:1, padding:'9px 13px', border:`1.5px solid ${CLOUD.enabled ? C.green : C.faint}`, borderRadius:8, fontSize:15, fontFamily:'monospace', outline:'none', background:C.paper }} />
               <button onClick={() => setShowKey(v => !v)} style={{ background:'#f1eee5', border:`1.5px solid ${C.faint}`, borderRadius:8, padding:'0 12px', cursor:'pointer', fontSize:14 }}>{showKey ? '🙈' : '👁️'}</button>
             </div>
             <p style={{ fontSize:12, color:'#aaa', margin:'6px 0 0' }}>
-              Obtenez votre clé sur <a href="https://openrouter.ai/keys" target="_blank" rel="noopener" style={{ color:C.blue }}>openrouter.ai/keys</a>
+              Obtenez votre clé sur <a href={PROVIDERS[provS].keyUrl} target="_blank" rel="noopener" style={{ color:C.blue }}>{PROVIDERS[provS].keyUrl.replace('https://','')}</a>
               {CLOUD.enabled && <span style={{ color:C.green }}> · Partagée automatiquement avec tous les appareils de la famille 🔑</span>}
             </p>
           </section>
@@ -5015,8 +5141,8 @@ function Settings() {
           <section>
             <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:4 }}>🤖 Modèles par défaut</div>
             <div style={{ fontSize:11, color:'#aaa', marginBottom:10, display:'flex', alignItems:'center', gap:6 }}>
-              {liveStatus === 'loading' && <><span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background:C.orange, animation:'pulse 1s infinite' }} /> Chargement des modèles OpenRouter…</>}
-              {liveStatus === 'done'    && <><span style={{ color:C.green }}>✓</span> {liveModels.length} modèles disponibles (OpenRouter live)</>}
+              {liveStatus === 'loading' && <><span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background:C.orange, animation:'pulse 1s infinite' }} /> Chargement des modèles…</>}
+              {liveStatus === 'done'    && <><span style={{ color:C.green }}>✓</span> {provS === 'zai' ? `${ZAI_MODELS.length} modèles Z.AI (GLM)` : `${liveModels.length} modèles disponibles (OpenRouter live)`}</>}
               {liveStatus === 'error'   && <><span style={{ color:C.red }}>⚠</span> Liste locale ({MODELS.length} modèles)</>}
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
