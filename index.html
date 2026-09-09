@@ -404,7 +404,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.40';
+const APP_VERSION = '1.41';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -430,8 +430,9 @@ const C = {
 const PROVIDERS = {
   zai: {
     id: 'zai', label: 'Z.AI (GLM)', short: 'Z.AI',
-    chatUrl:  () => 'https://api.z.ai/api/paas/v4/chat/completions',
-    imageUrl: () => 'https://api.z.ai/api/paas/v4/images/generations',
+    // api.z.ai bloque le preflight CORS navigateur → relais via Worker Cloudflare
+    chatUrl:  () => 'https://ricard-zai-proxy.ricard-ai.workers.dev/zai/api/paas/v4/chat/completions',
+    imageUrl: () => 'https://ricard-zai-proxy.ricard-ai.workers.dev/zai/api/paas/v4/images/generations',
     keyUrl: 'https://z.ai/manage-apikey/apikey-list',
     keyPlaceholder: 'Collez votre clé Z.AI…',
     extraHeaders: {},
