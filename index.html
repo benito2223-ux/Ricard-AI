@@ -404,7 +404,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.42';
+const APP_VERSION = '1.43';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -839,6 +839,7 @@ function loadSettings() {
   return {
     apiKey,
     provider,
+    zaiCodingPlan:   s.zaiCodingPlan   ?? false,
     budgets:         s.budgets         ?? { papa:50, maman:50, zya:5, zelie:5 },
     adminPin:        legacyPin,          // conservé pour rétro-compat
     profileCodes,

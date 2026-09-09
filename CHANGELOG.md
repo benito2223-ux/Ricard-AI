@@ -5,6 +5,22 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [1.43] — 2026-09-09 · Fix persistance du réglage GLM Coding Plan
+
+### Corrigé
+- **🚨 La case « GLM Coding Plan » se décochait à chaque rechargement de page.** `loadSettings()`
+  reconstruit l'objet settings au démarrage à partir d'une liste blanche de champs (voir v1.42) — le
+  nouveau champ `zaiCodingPlan` n'y avait pas été ajouté, donc il était bien sauvegardé en localStorage
+  mais silencieusement jeté à chaque reload. L'app repartait alors sur l'endpoint pay-as-you-go avec
+  une clé Coding Plan, provoquant selon le moment "Insufficient balance", "overloaded" ou "token expired
+  or incorrect" — tous des symptômes du même mismatch endpoint/clé, pas des erreurs de compte.
+  - **Fix** : `zaiCodingPlan` ajouté au retour de `loadSettings()`. Vérifié : coché → save → reload → reste coché.
+
+### Technique
+- Version : `1.43` — SW cache : `ricard-ai-v43`
+
+---
+
 ## [1.42] — 2026-09-09 · Fix "Insufficient balance" GLM Coding Plan
 
 ### Corrigé
