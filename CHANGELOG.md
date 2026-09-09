@@ -5,6 +5,22 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [1.44] — 2026-09-09 · Retry automatique sur rate-limit Z.AI
+
+### Ajouté
+- **Retry silencieux (jusqu'à 3 tentatives, backoff 1.5s/3s) sur les erreurs de rate-limit/surcharge
+  temporaire Z.AI** (HTTP 429, codes d'erreur `1302`/`1305` — voir docs.z.ai/devpack/usage-policy).
+  Le plan GLM Coding (surtout le palier Lite) a une concurrence limitée ; utiliser un autre outil sur
+  la même clé en parallèle (ex: un harnais de code Z.AI) peut saturer ce quota et faire échouer une
+  requête ponctuelle. L'app retente désormais automatiquement au lieu d'afficher une erreur immédiate.
+  - `isRateLimitedResp()` détecte le cas ; appliqué au chemin desktop (SSE streaming) et mobile (JSON).
+  - Les vraies erreurs (mauvaise clé, modèle invalide...) ne sont pas retentées, affichées immédiatement.
+
+### Technique
+- Version : `1.44` — SW cache : `ricard-ai-v44`
+
+---
+
 ## [1.43] — 2026-09-09 · Fix persistance du réglage GLM Coding Plan
 
 ### Corrigé

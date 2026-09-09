@@ -404,7 +404,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.43';
+const APP_VERSION = '1.44';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -917,6 +917,14 @@ function extractContent(raw) {
   return String(raw);
 }
 
+// Codes d'erreur Z.AI (GLM) de surcharge/rate-limit temporaire → retry avec backoff.
+// Voir docs.z.ai/devpack/usage-policy : 1302 = rate limit, 1305 = service surchargé.
+function isRateLimitedResp(status, errBody) {
+  if (status === 429) return true;
+  const code = errBody?.error?.code;
+  return code === '1302' || code === '1305';
+}
+
 async function streamChat({ apiKey, model, messages, onChunk, onDone, onError, signal }) {
   // Safari iOS et certains navigateurs mobiles ne supportent pas le SSE
   // → toujours JSON (non-streaming) sur mobile
@@ -951,8 +959,9 @@ async function streamChat({ apiKey, model, messages, onChunk, onDone, onError, s
         continue;
       }
       if (!resp.ok) {
-        let msg = `Erreur ${resp.status}`;
-        try { const e = await resp.json(); msg = e.error?.message || msg; } catch {}
+        let msg = `Erreur ${resp.status}`, errBody = null;
+        try { errBody = await resp.json(); msg = errBody.error?.message || msg; } catch {}
+        if (isRateLimitedResp(resp.status, errBody) && attempt < 2) continue; // retry silencieux
         onError?.(msg); return;
       }
       try {
@@ -1007,21 +1016,29 @@ async function streamChat({ apiKey, model, messages, onChunk, onDone, onError, s
   }
 
   // ── Mode desktop : streaming SSE (avec signal AbortController) ─
+  // Retry silencieux jusqu'à 3 fois en cas de rate-limit/surcharge temporaire Z.AI (code 1302/1305, HTTP 429).
   let resp;
-  try {
-    resp = await fetch(prov.chatUrl(), {
-      method: 'POST', headers: HEADERS,
-      body: JSON.stringify({ model, messages, stream: true }),
-      signal,
-    });
-  } catch(err) {
-    if (err.name === 'AbortError') return;
-    onError?.('Connexion impossible. Vérifiez votre clé API.'); return;
-  }
-  if (!resp.ok) {
-    let msg = `Erreur ${resp.status}`;
-    try { const e = await resp.json(); msg = e.error?.message || msg; } catch {}
-    onError?.(msg); return;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise(r => setTimeout(r, 1500 * attempt));
+    if (signal?.aborted) return;
+    try {
+      resp = await fetch(prov.chatUrl(), {
+        method: 'POST', headers: HEADERS,
+        body: JSON.stringify({ model, messages, stream: true }),
+        signal,
+      });
+    } catch(err) {
+      if (err.name === 'AbortError') return;
+      if (attempt === 2) { onError?.('Connexion impossible. Vérifiez votre clé API.'); return; }
+      continue;
+    }
+    if (!resp.ok) {
+      let msg = `Erreur ${resp.status}`, errBody = null;
+      try { errBody = await resp.json(); msg = errBody.error?.message || msg; } catch {}
+      if (isRateLimitedResp(resp.status, errBody) && attempt < 2) continue; // retry silencieux
+      onError?.(msg); return;
+    }
+    break; // succès → sortir de la boucle de retry
   }
   const reader = resp.body.getReader();
   const dec = new TextDecoder();
