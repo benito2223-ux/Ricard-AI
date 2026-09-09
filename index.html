@@ -407,7 +407,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.46';
+const APP_VERSION = '1.47';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -951,6 +951,17 @@ function isRateLimitedResp(status, errBody) {
   return code === '1302' || code === '1305';
 }
 
+// Un fetch qui échoue AVANT toute réponse (TypeError) n'a rien à voir avec la clé API : c'est
+// réseau, CORS ou un filtrage local. Afficher « vérifiez votre clé » dans ce cas envoie sur une
+// fausse piste — on remonte donc la cause technique réelle, diagnosticable d'un coup d'œil.
+function networkErrorMsg(err, url, voie) {
+  let host = url; try { host = new URL(url).host; } catch {}
+  return `**Échec réseau** — ${err?.name || 'Error'}: ${err?.message || '?'}\n\n`
+       + `\`${host}\` · origine \`${location.origin}\` · voie ${voie}\n\n`
+       + `Ce n'est **pas** la clé API : la requête n'a pas abouti. Causes usuelles : proxy bloqué `
+       + `(pare-feu, VPN, antivirus, DNS), ou origine non autorisée par le proxy.`;
+}
+
 async function streamChat({ apiKey, model, messages, onChunk, onDone, onError, signal }) {
   // Safari iOS et certains navigateurs mobiles ne supportent pas le SSE
   // → toujours JSON (non-streaming) sur mobile
@@ -981,14 +992,14 @@ async function streamChat({ apiKey, model, messages, onChunk, onDone, onError, s
           // Pas de signal sur mobile : iOS avorte resp.text() sur resize/background
         });
       } catch(err) {
-        if (attempt === 2) { onError?.('Connexion impossible. Vérifiez votre réseau.'); return; }
+        if (attempt === 2) { onError?.(networkErrorMsg(err, prov.chatUrl(), 'mobile/JSON')); return; }
         continue;
       }
       if (!resp.ok) {
-        let msg = `Erreur ${resp.status}`, errBody = null;
-        try { errBody = await resp.json(); msg = errBody.error?.message || msg; } catch {}
+        let msg = '', errBody = null;
+        try { errBody = await resp.json(); msg = errBody.error?.message || ''; } catch {}
         if (isRateLimitedResp(resp.status, errBody) && attempt < 2) continue; // retry silencieux
-        onError?.(msg); return;
+        onError?.(`[HTTP ${resp.status}] ${msg || 'Erreur sans message'}`); return;
       }
       try {
         rawText = await resp.text();
@@ -1055,14 +1066,14 @@ async function streamChat({ apiKey, model, messages, onChunk, onDone, onError, s
       });
     } catch(err) {
       if (err.name === 'AbortError') return;
-      if (attempt === 2) { onError?.('Connexion impossible. Vérifiez votre clé API.'); return; }
+      if (attempt === 2) { onError?.(networkErrorMsg(err, prov.chatUrl(), 'desktop/SSE')); return; }
       continue;
     }
     if (!resp.ok) {
-      let msg = `Erreur ${resp.status}`, errBody = null;
-      try { errBody = await resp.json(); msg = errBody.error?.message || msg; } catch {}
+      let msg = '', errBody = null;
+      try { errBody = await resp.json(); msg = errBody.error?.message || ''; } catch {}
       if (isRateLimitedResp(resp.status, errBody) && attempt < 2) continue; // retry silencieux
-      onError?.(msg); return;
+      onError?.(`[HTTP ${resp.status}] ${msg || 'Erreur sans message'}`); return;
     }
     break; // succès → sortir de la boucle de retry
   }

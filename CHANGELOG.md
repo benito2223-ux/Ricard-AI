@@ -5,6 +5,24 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [1.47] — 2026-09-09 · Messages d'erreur diagnostiques (fin des fausses pistes)
+
+### Modifié
+- **« Connexion impossible. Vérifiez votre clé API » était trompeur** : ce message s'affichait quand
+  `fetch()` échoue AVANT toute réponse (TypeError), c'est-à-dire un problème réseau/CORS/filtrage —
+  jamais un problème de clé. Il a envoyé le débogage sur de fausses pistes pendant des heures.
+  - Remplacé par un diagnostic complet : type et message de l'erreur, hôte appelé, **origine de la
+    page**, et **voie utilisée** (`desktop/SSE` ou `mobile/JSON`), avec la mention explicite que la
+    clé API n'est pas en cause.
+- **Les erreurs de réponse affichent désormais le code HTTP** (`[HTTP 401] …`, `[HTTP 403] …`) :
+  401 (clé invalide), 403 (origine refusée par le proxy) et 429 (rate limit) sont trois causes
+  radicalement différentes qui étaient jusqu'ici indiscernables dans l'interface.
+
+### Technique
+- Version : `1.47` — SW cache : `ricard-ai-v47`
+
+---
+
 ## [1.46] — 2026-09-09 · Ergonomie mobile : densité, barres allégées, menu (+) réparé
 
 ### Corrigé
