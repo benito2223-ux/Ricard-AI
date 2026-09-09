@@ -264,7 +264,7 @@ async function cloudSave(pid, tab, convs) {
 // ─── Sync config famille via Firebase (clé API + réglages) ───
 // Champs synchronisés entre tous les appareils de la famille
 const SHARED_SETTINGS_KEYS = [
-  'apiKey', 'provider', 'defaultModels', 'defaultImageModel',
+  'apiKey', 'provider', 'zaiCodingPlan', 'defaultModels', 'defaultImageModel',
   'budgets', 'dailyLimits', 'accessHours', 'dailyGoals',
   'socraticMode', 'profileContext', 'profileCodes',
   'appCode', 'autoLockMinutes',
@@ -404,7 +404,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.41';
+const APP_VERSION = '1.42';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -430,8 +430,10 @@ const C = {
 const PROVIDERS = {
   zai: {
     id: 'zai', label: 'Z.AI (GLM)', short: 'Z.AI',
-    // api.z.ai bloque le preflight CORS navigateur → relais via Worker Cloudflare
-    chatUrl:  () => 'https://ricard-zai-proxy.ricard-ai.workers.dev/zai/api/paas/v4/chat/completions',
+    // api.z.ai bloque le preflight CORS navigateur → relais via Worker Cloudflare.
+    // Les clés « GLM Coding Plan » (abonnement) ne fonctionnent QUE sur /api/coding/paas/v4,
+    // pas sur /api/paas/v4 (pay-as-you-go) → sinon Z.AI répond "Insufficient balance".
+    chatUrl:  () => `https://ricard-zai-proxy.ricard-ai.workers.dev/zai/api/${(lsGet('settings', {}) || {}).zaiCodingPlan ? 'coding/paas/v4' : 'paas/v4'}/chat/completions`,
     imageUrl: () => 'https://ricard-zai-proxy.ricard-ai.workers.dev/zai/api/paas/v4/images/generations',
     keyUrl: 'https://z.ai/manage-apikey/apikey-list',
     keyPlaceholder: 'Collez votre clé Z.AI…',
@@ -4976,6 +4978,19 @@ function Settings() {
               Obtenez votre clé sur <a href={PROVIDERS[provS].keyUrl} target="_blank" rel="noopener" style={{ color:C.blue }}>{PROVIDERS[provS].keyUrl.replace('https://','')}</a>
               {CLOUD.enabled && <span style={{ color:C.green }}> · Partagée automatiquement avec tous les appareils de la famille 🔑</span>}
             </p>
+            {provS === 'zai' && (
+              <label style={{ display:'flex', alignItems:'center', gap:8, marginTop:10, cursor:'pointer', fontSize:13, color:'#555' }}>
+                <input type="checkbox" checked={!!s.zaiCodingPlan}
+                  onChange={e => setS(prev => ({ ...prev, zaiCodingPlan: e.target.checked }))} />
+                J'ai un abonnement <strong>GLM Coding Plan</strong> (pas une clé pay-as-you-go)
+              </label>
+            )}
+            {provS === 'zai' && s.zaiCodingPlan && (
+              <p style={{ fontSize:11, color:'#aaa', margin:'6px 0 0' }}>
+                Requêtes envoyées sur l'endpoint Coding Plan (<code>/api/coding/paas/v4</code>). Décoche si tu as
+                une erreur « model not found » — ta clé est alors une clé pay-as-you-go classique.
+              </p>
+            )}
           </section>
           {/* ── 🎨 Illustrations ──────────────────────────── */}
           <SettingsImageModelSection s={s} setS={setS} />

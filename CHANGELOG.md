@@ -5,6 +5,21 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [1.42] — 2026-09-09 · Fix "Insufficient balance" GLM Coding Plan
+
+### Corrigé
+- **🚨 Clé « GLM Coding Plan » rejetée avec « Insufficient balance or no resource package »** : l'app appelait
+  systématiquement l'endpoint pay-as-you-go Z.AI (`/api/paas/v4/chat/completions`). Les clés créées pour un
+  abonnement GLM Coding Plan ne fonctionnent que sur `/api/coding/paas/v4/chat/completions` — ce n'était pas
+  un problème de clé invalide ou de solde.
+  - **Fix** : nouvelle case à cocher dans Réglages → Fournisseur IA — « J'ai un abonnement GLM Coding Plan » —
+    qui bascule l'URL vers l'endpoint coding. Réglage `zaiCodingPlan` synchronisé Firebase (famille).
+
+### Technique
+- Version : `1.42` — SW cache : `ricard-ai-v42`
+
+---
+
 ## [1.40] — 2026-09-08 · Z.AI (GLM) par défaut, OpenRouter en option
 
 ### Ajouté
