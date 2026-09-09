@@ -5,6 +5,28 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [1.48] — 2026-09-09 · 🚨 CAUSE RACINE : accès en HTTP → HTTPS forcé
+
+### Corrigé
+- **🚨 L'app chargée en `http://ricard-ai.surge.sh` (sans S) cassait tous les appels IA.** Surge sert
+  le site en HTTP *et* en HTTPS ; un favori, un raccourci ou une PWA installée en `http://` suffisait.
+  Le proxy Cloudflare n'autorisant que l'origine `https://ricard-ai.surge.sh`, il répondait 403 sans
+  en-têtes CORS → le navigateur bloquait la requête → `TypeError: Failed to fetch` → l'app affichait
+  « Vérifiez votre clé API ». **C'était la cause racine** des échecs intermittents et inexplicables
+  (clé changée, sync Firebase, onglets fermés, hard refresh : rien ne pouvait y remédier).
+  - **Fix** : redirection HTTP → HTTPS forcée au tout début du `<head>`, avant tout chargement
+    (localhost exclu pour le dev).
+  - ⚠️ **Conséquence sécurité** : en HTTP, la clé API transitait en clair dans un header
+    `Authorization`. Régénérer la clé Z.AI est recommandé.
+- **Le proxy renvoie désormais un refus d'origine lisible** : les en-têtes CORS sont joints au 403
+  (et le préflight est accepté), donc l'app affiche `[HTTP 403] Origine « … » non autorisée…` au lieu
+  d'un « Failed to fetch » opaque. Le préflight n'accorde aucun accès : le contrôle reste sur le POST.
+
+### Technique
+- Version : `1.48` — SW cache : `ricard-ai-v48` — `worker/index.js` redéployé.
+
+---
+
 ## [1.47] — 2026-09-09 · Messages d'erreur diagnostiques (fin des fausses pistes)
 
 ### Modifié

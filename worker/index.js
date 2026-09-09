@@ -29,13 +29,28 @@ export default {
     const origin = request.headers.get('Origin') || '';
     const cors = corsHeaders(origin);
 
-    // Preflight
+    // Preflight — toujours accepté, y compris pour une origine non autorisée : le préflight ne
+    // donne accès à rien, il déclare seulement ce qui est permis. Le contrôle réel se fait sur la
+    // requête POST ci-dessous, qui peut ainsi répondre un 403 *lisible* par le navigateur.
     if (request.method === 'OPTIONS') {
-      return new Response(null, { status: cors ? 204 : 403, headers: cors || {} });
+      return new Response(null, {
+        status: 204,
+        headers: cors || { ...CORS_HEADERS, 'Access-Control-Allow-Origin': origin || '*', Vary: 'Origin' },
+      });
     }
     if (!cors) {
-      return new Response(JSON.stringify({ error: 'Origin non autorisée' }), {
-        status: 403, headers: { 'Content-Type': 'application/json' },
+      // Renvoyer les en-têtes CORS même sur un refus : sans eux, le navigateur bloque la réponse
+      // et l'app ne voit qu'un « TypeError: Failed to fetch » opaque, impossible à diagnostiquer.
+      // Aucun risque : la requête vers Z.AI n'est pas effectuée, on ne divulgue rien.
+      return new Response(JSON.stringify({
+        error: {
+          code: 'ORIGIN_REFUSEE',
+          message: `Origine « ${origin || '(absente)'} » non autorisée. Utilisez https://ricard-ai.surge.sh `
+                 + `(le HTTP simple est refusé : la clé API ne doit pas transiter en clair).`,
+        },
+      }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': origin || '*' },
       });
     }
 

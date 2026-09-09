@@ -3,6 +3,20 @@
 <head>
 <meta charset="utf-8">
 <title>Ricard AI</title>
+<!-- HTTPS obligatoire, AVANT tout le reste :
+     1. la clé API transite dans un header Authorization — jamais en clair sur HTTP ;
+     2. le proxy Cloudflare n'autorise que l'origine https://ricard-ai.surge.sh, donc un accès
+        en http:// faisait échouer tous les appels IA avec un « Failed to fetch » (CORS).
+     Surge sert les deux protocoles : un vieux favori ou une PWA installée en http:// suffisait
+     à casser l'app. On redirige donc systématiquement (localhost exclu pour le dev). -->
+<script>
+  (function () {
+    var h = location.hostname;
+    if (location.protocol === 'http:' && h !== 'localhost' && h !== '127.0.0.1') {
+      location.replace('https://' + location.host + location.pathname + location.search + location.hash);
+    }
+  })();
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Share+Tech+Mono&family=Kalam:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -407,7 +421,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.47';
+const APP_VERSION = '1.48';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
