@@ -260,17 +260,47 @@ function initFirebase(cfg) {
 })();
 
 // ── Firestore save / load ─────────────────────────────────────
+// Cap commun : 30 conversations max par onglet, épinglées toujours conservées
+function capConvs(convs, cap = 30) {
+  if (!Array.isArray(convs) || convs.length <= cap) return convs;
+  const pinnedIds = new Set(convs.filter(c => c.pinned).map(c => c.id));
+  const rest = convs.filter(c => !pinnedIds.has(c.id));
+  const restQuota = Math.max(0, cap - pinnedIds.size);
+  const keepRest = new Set(rest.slice(-restQuota).map(c => c.id));
+  return convs.filter(c => pinnedIds.has(c.id) || keepRest.has(c.id));
+}
+// Fusion conv par conv : pour un même id, la version la plus récente (updatedAt) gagne —
+// jamais d'écrasement global du local par le cloud (cause historique de pertes de conversations)
+function mergeConvs(local, cloud) {
+  const stamp = c => c?.updatedAt || c?.createdAt || 0;
+  const byId = new Map();
+  (local || []).forEach(c => byId.set(c.id, c));
+  (cloud || []).forEach(c => {
+    const cur = byId.get(c.id);
+    if (!cur || stamp(c) > stamp(cur)) byId.set(c.id, c);
+  });
+  return capConvs([...byId.values()].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)));
+}
+
 const _saveTimers = {};
+const _pendingSaves = {};
 function cloudSaveLater(pid, tab, convs) {
   const k = pid+'_'+tab;
+  _pendingSaves[k] = { pid, tab, convs };
   clearTimeout(_saveTimers[k]);
-  _saveTimers[k] = setTimeout(() => cloudSave(pid, tab, convs), 3000);
+  _saveTimers[k] = setTimeout(() => { delete _pendingSaves[k]; cloudSave(pid, tab, convs); }, 3000);
+}
+// Force l'envoi immédiat des sauvegardes cloud en attente (fin de réponse, page masquée/fermée)
+async function flushCloudSaves() {
+  const entries = Object.values(_pendingSaves);
+  Object.keys(_pendingSaves).forEach(k => { clearTimeout(_saveTimers[k]); delete _pendingSaves[k]; });
+  await Promise.all(entries.map(p => cloudSave(p.pid, p.tab, p.convs)));
 }
 async function cloudSave(pid, tab, convs) {
   if (!CLOUD.enabled) return;
   try {
     await CLOUD.db.collection('ricard').doc(getFamilyId()+'_'+pid+'_'+tab).set({
-      convs: JSON.stringify(convs.slice(-30)),
+      convs: JSON.stringify(capConvs(convs)),
       updatedAt: new Date().toISOString(),
     });
   } catch(e) { console.warn('[Firebase] save:', e.message); }
@@ -342,7 +372,7 @@ function cloudWatchApiKey(cb) {
 
 async function cloudLoadAll(pid) {
   if (!CLOUD.enabled) return null;
-  const tabs = ['chat','code','design','zya','zelie'];
+  const tabs = ['chat','code','zya','zelie'];
   const result = {};
   for (const tab of tabs) {
     try {
@@ -359,16 +389,19 @@ async function cloudLoadAll(pid) {
 // ── Google Drive backup / restore ─────────────────────────────
 // ── Export / Import JSON (pas besoin de Drive API) ───────────
 function backupToFile() {
+  const settings = lsGet('settings', {}) || {};
   const data = {
-    version: 2,
+    version: 3,
     exportDate: new Date().toISOString(),
     familyId: getFamilyId(),
+    memories: settings.familyMemories || {},
+    profileContext: settings.profileContext || {},
     profiles: {}
   };
   ['papa','maman','zya','zelie'].forEach(pid => {
     data.profiles[pid] = {};
     ['chat','code','design','zya','zelie'].forEach(tab => {
-      const convs = _lsGet('convs_'+pid+'_'+tab, []);
+      const convs = lsGet('convs_'+pid+'_'+tab, []); // lsGet (et pas _lsGet) : sait décompresser le format lz:
       if (convs.length) data.profiles[pid][tab] = convs;
     });
   });
@@ -393,9 +426,16 @@ function restoreFromFile(onDone) {
         if (!data?.profiles) { alert('❌ Fichier invalide.'); return; }
         Object.entries(data.profiles).forEach(([pid, tabs]) => {
           Object.entries(tabs).forEach(([tab, convs]) => {
-            if (Array.isArray(convs)) _lsSet('convs_'+pid+'_'+tab, convs);
+            if (Array.isArray(convs)) lsSet('convs_'+pid+'_'+tab, convs);
           });
         });
+        // Mémoire familiale + contexte (format v3) : fusionnés dans les settings existants
+        if (data.memories || data.profileContext) {
+          const s = lsGet('settings', {}) || {};
+          if (data.memories) s.familyMemories = data.memories;
+          if (data.profileContext) s.profileContext = data.profileContext;
+          lsSet('settings', s);
+        }
         if (data.familyId) localStorage.setItem('ricard_familyId', data.familyId);
         alert('✅ Restauré depuis ' + file.name + '\nL\'app va se recharger.');
         onDone?.();
@@ -421,7 +461,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.48';
+const APP_VERSION = '1.49';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -807,11 +847,20 @@ const SYSTEM_PROMPTS = {
 
 // ─── Storage with optional LZ-string compression ─────────────
 const PFX = 'ricard_ai_';
+function _compressStored(str) {
+  return (str.length > 500 && window.LZString) ? 'lz:' + window.LZString.compressToUTF16(str) : str;
+}
 function lsGet(key, fallback = null) {
   try {
     const v = localStorage.getItem(PFX + key);
     if (!v) return fallback;
-    if (v.startsWith('lz:') && window.LZString) {
+    if (v.startsWith('lz:')) {
+      if (!window.LZString) {
+        // CDN LZString indisponible : on rend le fallback SANS que la sauvegarde suivante écrase la donnée
+        // (la garde anti-écrasement de saveConvs/effet de persistance protège les conversations)
+        console.warn('[Storage] LZString indisponible (CDN ?) — "' + key + '" illisible pour cette session');
+        return fallback;
+      }
       const dec = window.LZString.decompressFromUTF16(v.slice(3));
       return dec ? JSON.parse(dec) : fallback;
     }
@@ -819,28 +868,33 @@ function lsGet(key, fallback = null) {
   } catch { return fallback; }
 }
 function lsSet(key, val) {
+  let stored;
+  try { stored = _compressStored(JSON.stringify(val)); } catch { return; }
   try {
-    const str = JSON.stringify(val);
-    let stored = str;
-    if (str.length > 500 && window.LZString) {
-      stored = 'lz:' + window.LZString.compressToUTF16(str);
-    }
     localStorage.setItem(PFX + key, stored);
   } catch(e) {
     // Quota dépassé (fréquent sur iOS avec conversations + images)
-    // → purger les anciennes conversations pour libérer de la place
+    // → purger les conversations les plus anciennes puis réessayer AVEC compression
     if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
       try {
-        // Supprimer les conversations les plus anciennes de chaque tab/profil
-        const toDelete = [];
+        const keys = [];
         for (let i = 0; i < localStorage.length; i++) {
           const k = localStorage.key(i);
-          if (k && k.startsWith(PFX + 'convs_')) toDelete.push(k);
+          if (k && k.startsWith(PFX + 'convs_')) keys.push(k);
         }
-        // Supprimer la moitié des conversations (les plus anciennes en premier)
-        toDelete.slice(0, Math.ceil(toDelete.length / 2)).forEach(k => localStorage.removeItem(k));
-        // Réessayer
-        localStorage.setItem(PFX + key, JSON.stringify(val));
+        // Activité la plus récente de chaque lot de conversations (vrai tri par date, pas l'ordre de stockage)
+        const lastActivity = k => {
+          try {
+            const v = localStorage.getItem(k) || '';
+            const arr = v.startsWith('lz:') && window.LZString
+              ? JSON.parse(window.LZString.decompressFromUTF16(v.slice(3)))
+              : JSON.parse(v);
+            return Math.max(0, ...arr.map(c => c?.updatedAt || c?.createdAt || 0));
+          } catch { return 0; }
+        };
+        keys.sort((a, b) => lastActivity(a) - lastActivity(b));
+        keys.slice(0, Math.ceil(keys.length / 2)).forEach(k => localStorage.removeItem(k));
+        localStorage.setItem(PFX + key, stored);
       } catch {}
     }
   }
@@ -936,8 +990,16 @@ function stripAttachmentData(convs) {
     })),
   }));
 }
+function hasRealContent(convs) { return (convs || []).some(c => (c.messages || []).length > 0); }
 function saveConvs(pid, tab, convs) {
-  lsSet(`convs_${pid}_${tab}`, stripAttachmentData(convs.slice(-30)));
+  const capped = capConvs(convs);
+  // Garde anti-écrasement : ne jamais remplacer des conversations existantes par une version
+  // sans aucun message (ex: lsGet a rendu [] car le CDN LZString était down)
+  if (!hasRealContent(capped) && hasRealContent(loadConvs(pid, tab))) {
+    console.warn('[Persistance] écriture ignorée (' + pid + '/' + tab + ') : état vide mais stockage plein');
+    return;
+  }
+  lsSet(`convs_${pid}_${tab}`, stripAttachmentData(capped));
 }
 function loadCostLog() { return lsGet('cost_log', []); }
 function appendCostLog(entry) {
@@ -1292,9 +1354,9 @@ async function generateImage({ apiKey, model, prompt, onDone, onError }) {
 // Après chaque échange, un modèle léger extrait les faits durables à retenir
 // (préférences, événements, contexte de vie) — silencieux, non bloquant.
 async function extractFamilyMemory({ apiKey, pid, userMsg, assistantMsg, existing }) {
-  if (!apiKey) return [];
+  if (!apiKey) return { facts: [], supersede: [] };
   const profile = getProfile(pid);
-  const knownFacts = (existing || []).slice(-30).map(m => `- ${m.text}`).join('\n') || '(aucun fait connu pour l\'instant)';
+  const knownFacts = (existing || []).slice(-30).map(m => `- [${m.id}] ${m.text}`).join('\n') || '(aucun fait connu pour l\'instant)';
   const sys = `Tu extrais des faits durables et utiles à propos de "${profile?.name || pid}" à partir d'un échange de conversation.
 Faits déjà connus (ne les répète pas) :
 ${knownFacts}
@@ -1303,8 +1365,9 @@ Règles :
 - Ne retiens que des informations DURABLES (préférences, contexte de vie, événements à venir, difficultés récurrentes, centres d'intérêt, relations importantes).
 - Ignore le small talk, les questions ponctuelles, les infos déjà connues.
 - Maximum 2 faits par échange. Formule chaque fait en une phrase courte et neutre, en français.
+- CONTRADICTION / MISE À JOUR : si un nouvel élément rend un fait connu obsolète ou le contredit (info changée, préférence remplacée...), écris quand même le nouveau fait ET mets l'id (entre crochets) de l'ancien fait dans "supersede". L'ancien sera retiré au profit du nouveau.
 - Si rien de notable, réponds avec une liste vide.
-Réponds UNIQUEMENT avec ce JSON, rien d'autre : {"facts": ["fait 1", "fait 2"]} ou {"facts": []}`;
+Réponds UNIQUEMENT avec ce JSON, rien d'autre : {"facts": ["fait 1", "fait 2"], "supersede": ["id-fait-obsolète"]} ou {"facts": [], "supersede": []}`;
   const prov = getActiveProvider();
   try {
     const resp = await fetch(prov.chatUrl(), {
@@ -1319,15 +1382,18 @@ Réponds UNIQUEMENT avec ce JSON, rien d'autre : {"facts": ["fait 1", "fait 2"]}
         stream: false,
       }),
     });
-    if (!resp.ok) return [];
+    if (!resp.ok) return { facts: [], supersede: [] };
     const data = await resp.json();
     const raw = data.choices?.[0]?.message?.content || '';
     const parsed = extractJsonObj(raw);
     const facts = Array.isArray(parsed?.facts) ? parsed.facts.filter(f => typeof f === 'string' && f.trim()).slice(0, 2) : [];
-    return facts;
+    const supersede = Array.isArray(parsed?.supersede)
+      ? parsed.supersede.filter(x => typeof x === 'string' && x.trim()).map(x => x.trim().replace(/^\[|\]$/g, ''))
+      : [];
+    return { facts, supersede };
   } catch (e) {
     console.warn('[Mémoire familiale] extraction échouée:', e.message);
-    return [];
+    return { facts: [], supersede: [] };
   }
 }
 
@@ -1502,6 +1568,7 @@ function newConv(tabId, settings) {
     messages: [],
     model: sanitizeModelForProvider(dm[tabId], provId) || DEFAULT_MODELS_BY_PROVIDER[provId]?.[tabId] || DEFAULT_MODEL,
     createdAt: Date.now(),
+    updatedAt: Date.now(),
     totalIn: 0, totalOut: 0, totalCost: 0,
     pinned: false,
   };
@@ -1548,7 +1615,7 @@ function reducer(state, action) {
     case 'TOGGLE_PIN': {
       const { tabId, convId } = action.payload;
       const t = state.tabs[tabId];
-      return { ...state, tabs: { ...state.tabs, [tabId]: { ...t, convs: t.convs.map(c => c.id === convId ? { ...c, pinned: !c.pinned } : c) } } };
+      return { ...state, tabs: { ...state.tabs, [tabId]: { ...t, convs: t.convs.map(c => c.id === convId ? { ...c, pinned: !c.pinned, updatedAt: Date.now() } : c) } } };
     }
     case 'SHOW_PIN_ENTRY': return { ...state, showPinEntry: true, pendingProfile: action.payload };
     case 'HIDE_PIN_ENTRY': return { ...state, showPinEntry: false, pendingProfile: null };
@@ -1570,10 +1637,13 @@ function reducer(state, action) {
     case 'TOGGLE_ARTIFACT': return { ...state, showArtifact: !state.showArtifact };
     case 'SET_MONTH_COST': return { ...state, monthCost: action.payload };
     case 'MERGE_CLOUD_TABS': {
-      // Fusionne les conversations Firebase dans le state (Firebase = source de vérité)
+      // Fusion conv par conv (updatedAt le plus récent gagne) — le cloud n'écrase plus le local
       const merged = { ...state.tabs };
-      Object.entries(action.payload).forEach(([tab, convs]) => {
-        merged[tab] = { convs, activeId: convs[convs.length-1]?.id || null };
+      Object.entries(action.payload).forEach(([tab, cloudConvs]) => {
+        const t = merged[tab];
+        if (!t) return;
+        const convs = mergeConvs(t.convs, cloudConvs);
+        merged[tab] = { ...t, convs, activeId: convs.some(c => c.id === t.activeId) ? t.activeId : (convs[convs.length - 1]?.id || null) };
       });
       return { ...state, tabs: merged };
     }
@@ -1601,7 +1671,7 @@ function reducer(state, action) {
       return {
         ...state,
         showModelPicker: false,
-        tabs: { ...state.tabs, [tabId]: { ...t, convs: t.convs.map(c => c.id === t.activeId ? { ...c, model } : c) } },
+        tabs: { ...state.tabs, [tabId]: { ...t, convs: t.convs.map(c => c.id === t.activeId ? { ...c, model, updatedAt: Date.now() } : c) } },
       };
     }
     case 'ADD_MSG': {
@@ -1619,7 +1689,7 @@ function reducer(state, action) {
               const title = c.title === 'Nouvelle conversation' && c.messages.length === 0
                 ? (msg.content ? msg.content.slice(0, 42) + (msg.content.length > 42 ? '…' : '') : (msg.attachments?.[0]?.name || 'Conversation'))
                 : c.title;
-              return { ...c, messages, title };
+              return { ...c, messages, title, updatedAt: Date.now() };
             }),
           },
         },
@@ -1643,7 +1713,7 @@ function reducer(state, action) {
               const totalIn  = done ? c.totalIn  + inTk  : c.totalIn;
               const totalOut = done ? c.totalOut + outTk  : c.totalOut;
               const totalCost = done ? c.totalCost + estimateCost(c.model, inTk, outTk) : c.totalCost;
-              return { ...c, messages, totalIn, totalOut, totalCost };
+              return { ...c, messages, totalIn, totalOut, totalCost, updatedAt: Date.now() };
             }),
           },
         },
@@ -1666,7 +1736,7 @@ function reducer(state, action) {
                 if (error) return { ...m, done:true, content:`⚠️ ${error}`, type:undefined };
                 return { ...m, imageUrl, revisedPrompt, done:true };
               });
-              return { ...c, messages };
+              return { ...c, messages, updatedAt: Date.now() };
             }),
           },
         },
@@ -1693,13 +1763,32 @@ function reducer(state, action) {
       }) } } };
     }
     case 'ADD_FAMILY_MEMORIES': {
-      const { pid, facts, source = 'auto' } = action.payload;
-      if (!facts?.length) return state;
+      const { pid, facts, source = 'auto', supersede = [] } = action.payload;
       const now = Date.now();
-      const newEntries = facts.map(text => ({ id: uuid(), text, ts: now, source }));
-      const current = state.settings.familyMemories?.[pid] || [];
-      const merged = [...current, ...newEntries].slice(-80); // cap 80 entrées, FIFO
+      const norm = s => (s || '').toLowerCase().replace(/[^a-zà-ÿ0-9]+/gi, ' ').trim();
+      // Contradictions : les faits que l'extraction a déclarés obsolètes sont retirés...
+      let current = (state.settings.familyMemories?.[pid] || []).filter(m => !supersede.includes(m.id));
+      // ...et dédoublonnage simple (comparaison insensible à la casse/ponctuation)
+      const seen = new Set(current.map(m => norm(m.text)));
+      const newEntries = [];
+      (facts || []).forEach(text => {
+        const n = norm(text);
+        if (!n || seen.has(n)) return;
+        seen.add(n);
+        newEntries.push({ id: uuid(), text, ts: now, source });
+      });
+      if (!newEntries.length && current.length === (state.settings.familyMemories?.[pid] || []).length) return state;
+      // Cap 80, FIFO — mais un souvenir épinglé n'est jamais oublié
+      const pinned = current.filter(m => m.pinned);
+      const rest = [...current.filter(m => !m.pinned), ...newEntries];
+      const restQuota = Math.max(0, 80 - pinned.length);
+      const merged = [...pinned, ...rest.slice(-restQuota)];
       return { ...state, settings: { ...state.settings, familyMemories: { ...state.settings.familyMemories, [pid]: merged } } };
+    }
+    case 'TOGGLE_MEMORY_PIN': {
+      const { pid, id } = action.payload;
+      const current = state.settings.familyMemories?.[pid] || [];
+      return { ...state, settings: { ...state.settings, familyMemories: { ...state.settings.familyMemories, [pid]: current.map(m => m.id === id ? { ...m, pinned: !m.pinned } : m) } } };
     }
     case 'DELETE_FAMILY_MEMORY': {
       const { pid, id } = action.payload;
@@ -1709,7 +1798,7 @@ function reducer(state, action) {
     case '_SET_CONV_MESSAGES': {
       const { tabId, convId, messages } = action.payload;
       const t = state.tabs[tabId];
-      return { ...state, tabs: { ...state.tabs, [tabId]: { ...t, convs: t.convs.map(c => c.id === convId ? { ...c, messages } : c) } } };
+      return { ...state, tabs: { ...state.tabs, [tabId]: { ...t, convs: t.convs.map(c => c.id === convId ? { ...c, messages, updatedAt: Date.now() } : c) } } };
     }
     default: return state;
   }
@@ -1755,14 +1844,37 @@ function AppProvider({ children }) {
   }, []);
 
   // Persist convs (localStorage + Firebase)
+  const flushTimerRef = useRef(null);
   useEffect(() => {
     if (!state.profile) return;
     TABS.forEach(t => {
       if (!state.tabs[t]) return;
-      saveConvs(state.profile, t, state.tabs[t].convs);
-      cloudSaveLater(state.profile, t, state.tabs[t].convs);
+      const convs = state.tabs[t].convs;
+      // Garde anti-écrasement : état sans aucun message + stockage local plein = échec de
+      // chargement probable (ex: CDN LZString down) → on n'écrit ni en local ni dans le cloud
+      if (!hasRealContent(convs) && hasRealContent(loadConvs(state.profile, t))) {
+        console.warn('[Persistance] état vide mais stockage plein (' + t + ') — sauvegarde ignorée');
+        return;
+      }
+      saveConvs(state.profile, t, convs);
+      cloudSaveLater(state.profile, t, convs);
     });
+    // Filet : toute sauvegarde cloud en attente part au plus tard ~1,2 s après le dernier changement
+    // (couvre la fin d'une réponse, même si l'app est fermée juste après)
+    clearTimeout(flushTimerRef.current);
+    flushTimerRef.current = setTimeout(() => { flushCloudSaves(); }, 1200);
   }, [state.profile, state.tabs]);
+
+  // Flush des sauvegardes cloud quand la page est masquée ou fermée
+  useEffect(() => {
+    const onHidden = () => { if (document.visibilityState === 'hidden') flushCloudSaves(); };
+    document.addEventListener('visibilitychange', onHidden);
+    window.addEventListener('pagehide', flushCloudSaves);
+    return () => {
+      document.removeEventListener('visibilitychange', onHidden);
+      window.removeEventListener('pagehide', flushCloudSaves);
+    };
+  }, []);
 
   // Charger depuis Firebase quand le profil change
   useEffect(() => {
@@ -1770,6 +1882,20 @@ function AppProvider({ children }) {
     let cancelled = false;
     cloudLoadAll(state.profile).then(cloudData => {
       if (cancelled || !cloudData) return;
+      // Sauvegarde locale tournante AVANT toute fusion (filet de sécurité : 3 générations)
+      try {
+        const slot = (((lsGet('convs_bak_slot', 0) || 0) + 1) % 3);
+        lsSet('convs_bak_' + slot, {
+          pid: state.profile, ts: Date.now(),
+          tabs: Object.fromEntries(Object.entries(state.tabs).map(([k, v]) => [k, { ...v, convs: stripAttachmentData(v.convs || []) }])),
+        });
+        lsSet('convs_bak_slot', slot);
+      } catch(e) { console.warn('[Persistance] backup rotatif:', e.message); }
+      // Les conversations supprimées localement (tombstones) ne reviennent pas du cloud
+      const tombs = new Set((lsGet('conv_tombstones', []) || []).map(x => x.id));
+      if (tombs.size) {
+        Object.keys(cloudData).forEach(tab => { cloudData[tab] = cloudData[tab].filter(c => !tombs.has(c.id)); });
+      }
       dispatch({ type: 'MERGE_CLOUD_TABS', payload: cloudData });
     });
     return () => { cancelled = true; };
@@ -1930,7 +2056,11 @@ function AppProvider({ children }) {
       sysPrompt += '\n\n[CONTEXTE PERSONNEL]\n' + profileCtx.trim();
     }
     // ── Mémoire familiale (faits retenus au fil des conversations) ──
-    const memories = state.settings.familyMemories?.[pid] || [];
+    // Épinglés d'abord, puis les plus récents — plafonnés à 45 pour borner le contexte
+    const allMems = state.settings.familyMemories?.[pid] || [];
+    const memPinned = allMems.filter(m => m.pinned);
+    const memQuota = Math.max(0, 45 - memPinned.length);
+    const memories = memQuota ? [...memPinned, ...allMems.filter(m => !m.pinned).slice(-memQuota)] : memPinned;
     if (memories.length) {
       sysPrompt += '\n\n[MÉMOIRE FAMILIALE]\n' + memories.map(m => `• ${m.text}`).join('\n');
     }
@@ -1986,7 +2116,11 @@ function AppProvider({ children }) {
         const totalMsgs = conv.messages.length + 2; // +user +assistant de cet échange
         if (state.settings.memoryAutoCapture !== false && totalMsgs % 6 === 0) {
           extractFamilyMemory({ apiKey: state.settings.apiKey, pid, userMsg: content, assistantMsg: text, existing: state.settings.familyMemories?.[pid] })
-            .then(facts => { if (facts.length) dispatch({ type:'ADD_FAMILY_MEMORIES', payload:{ pid, facts, source:'auto' } }); });
+            .then(res => {
+              if (res.facts.length || res.supersede?.length) {
+                dispatch({ type:'ADD_FAMILY_MEMORIES', payload:{ pid, facts: res.facts, source:'auto', supersede: res.supersede } });
+              }
+            });
         }
       },
       onError: errMsg => {
@@ -2463,6 +2597,11 @@ function ConvItem({ c, activeId, tabId, dispatch }) {
   const del    = e => {
     e.stopPropagation();
     if (confirmDel) {
+      // Tombstone : la conversation supprimée ne doit pas revenir d'une synchro cloud
+      // (le merge étant une union, il faut mémoriser les suppressions ~30 jours)
+      const tombs = (lsGet('conv_tombstones', []) || []).filter(x => Date.now() - x.ts < 30*24*3600e3);
+      tombs.push({ id: c.id, ts: Date.now() });
+      lsSet('conv_tombstones', tombs.slice(-199));
       dispatch({ type:'DELETE_CONV', payload:{ tabId, convId:c.id } });
     } else {
       setConfirmDel(true);
@@ -5470,9 +5609,14 @@ function Settings() {
                       <div style={{ fontSize:12, color:'#bbb', fontStyle:'italic', paddingLeft:30 }}>Rien de mémorisé pour l'instant</div>
                     ) : (
                       <div style={{ display:'flex', flexDirection:'column', gap:4, paddingLeft:30 }}>
-                        {mems.slice().reverse().map(m => (
-                          <div key={m.id} style={{ display:'flex', alignItems:'flex-start', gap:6, background:C.paper, border:`1px solid ${C.faint}`, borderRadius:8, padding:'6px 10px' }}>
-                            <span style={{ fontSize:12, flex:1, lineHeight:1.4 }}>{m.source === 'manual' ? '📌 ' : ''}{m.text}</span>
+                        {[...mems].sort((a, b) => (b.pinned?1:0) - (a.pinned?1:0) || (b.ts||0) - (a.ts||0)).map(m => (
+                          <div key={m.id} style={{ display:'flex', alignItems:'flex-start', gap:6, background:C.paper, border:`1px solid ${m.pinned ? C.teal : C.faint}`, borderRadius:8, padding:'6px 10px' }}>
+                            <span style={{ fontSize:12, flex:1, lineHeight:1.4 }}>{m.source === 'manual' ? '✍️ ' : ''}{m.text}</span>
+                            <button onClick={() => {
+                              dispatch({ type:'TOGGLE_MEMORY_PIN', payload:{ pid:p.id, id:m.id } });
+                              setS(prev => ({ ...prev, familyMemories: { ...prev.familyMemories, [p.id]: (prev.familyMemories?.[p.id]||[]).map(x => x.id === m.id ? { ...x, pinned: !x.pinned } : x) } }));
+                            }} title={m.pinned ? 'Détacher (redevient soumis à la limite des 80)' : 'Épingler (jamais oublié, toujours injecté)'}
+                              style={{ background:'none', border:'none', cursor:'pointer', fontSize:13, flexShrink:0, padding:0, lineHeight:1, opacity:m.pinned ? 1 : .35 }}>📌</button>
                             <button onClick={() => {
                               dispatch({ type:'DELETE_FAMILY_MEMORY', payload:{ pid:p.id, id:m.id } });
                               setS(prev => ({ ...prev, familyMemories: { ...prev.familyMemories, [p.id]: (prev.familyMemories?.[p.id]||[]).filter(x => x.id !== m.id) } }));

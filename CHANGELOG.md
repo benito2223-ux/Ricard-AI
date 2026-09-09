@@ -5,6 +5,48 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [1.49] — 2026-09-09 · 🚨 Fin des pertes de conversations + mémoire à gestion des contradictions
+
+### Corrigé
+- **🚨 Le cloud écrasait le local au login — cause principale des conversations perdues.** À chaque
+  connexion de profil, `MERGE_CLOUD_TABS` REMPLAÇAIT toutes les conversations de chaque onglet par la
+  version Firestore (commentaire d'époque : « Firebase = source de vérité »), puis réécrivait cette
+  version par-dessus le localStorage. Or l'écriture cloud part avec 3 s de retard (débouncé, réarmé à
+  chaque token de streaming) : tout échange non monté dans le cloud était détruit au login suivant,
+  y compris localement. Constaté sur Firestore : `zya` figé au 14 mai, `zelie` au 4 juillet.
+  - **Fix** : chaque conversation porte désormais un `updatedAt` (stampé dans tous les reducers qui la
+    modifient) ; la fusion est **conv par conv, la version la plus récente gagne**, union des deux côtés —
+    plus jamais d'écrasement global.
+- **Aucun flush avant fermeture** : fermer l'app moins de 3 s après une réponse = échange jamais envoyé
+  au cloud. Désormais : flush automatique ~1,2 s après le dernier changement, flush sur
+  `visibilitychange` (onglet masqué) et `pagehide` (fermeture/navigation).
+- **Les conversations supprimées ressuscitaient** (conséquence du merge-union) : tombstones locaux
+  (`conv_tombstones`, rétention 30 jours) filtrent le cloud au chargement.
+- **L'export JSON de secours était cassé** : `backupToFile()` lisait le localStorage avec `_lsGet`,
+  qui ne sait pas décompresser le format `lz:` → fichier exporté avec des conversations **vides**.
+  Fix : `lsGet` partout (+ export/import de la mémoire familiale et du contexte, format v3).
+- **Purge quota non triée** : en cas de `QuotaExceededError`, la moitié des clés `convs_*` était
+  supprimée dans l'ordre de stockage (commentaire « les plus anciennes en premier » faux), puis le
+  retry se faisait sans compression. Fix : vrai tri par dernière activité, retry compressé.
+- **Écrasement par état vide** : si le CDN LZString tombait, `lsGet` rendait `[]`, l'app créait une
+  conversation vide et l'effet de persistance écrasait les vraies données en quelques ms. Garde
+  anti-écrasement ajoutée (état vide + stockage plein → écriture refusée, local ET cloud).
+
+### Ajouté
+- **Gestion des contradictions de la mémoire familiale** : l'extraction reçoit les faits connus AVEC
+  leurs ids et peut répondre `supersede: [ids]` quand une info nouvelle remplace une ancienne —
+  l'ancien fait est retiré au profit du nouveau (fini « animal préféré : chat » ET « chien » qui
+  cohabitent). Dédoublonnage insensible à la casse/ponctuation en prime.
+- **Épinglage des souvenirs** (📌 dans Réglages → Mémoire) : un souvenir épinglé n'est jamais oublié
+  par la limite FIFO des 80, et reste injecté en priorité. Injection plafonnée à 45 faits
+  (épinglés + plus récents) pour borner le contexte/coût.
+- **Sauvegarde locale tournante** (3 générations, `convs_bak_*`) prise juste avant toute fusion cloud.
+
+### Technique
+- Version : `1.49` — SW cache : `ricard-ai-v49`
+
+---
+
 ## [1.48] — 2026-09-09 · 🚨 CAUSE RACINE : accès en HTTP → HTTPS forcé
 
 ### Corrigé
