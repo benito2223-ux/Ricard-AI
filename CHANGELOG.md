@@ -5,6 +5,34 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [1.46] — 2026-09-09 · Ergonomie mobile : densité, barres allégées, menu (+) réparé
+
+### Corrigé
+- **🚨 Le menu (+) de la barre de saisie était tronqué sur mobile** : il s'ouvrait en
+  `position:absolute` à l'intérieur du conteneur de saisie, qui est en `overflow:hidden` — une partie
+  des options était donc littéralement coupée et invisible.
+  - **Fix** : le menu devient une **feuille remontant du bas** (`position:fixed`, pleine largeur,
+    overlay de fermeture, cibles tactiles de 50px). Plus rien ne peut le couper.
+
+### Modifié
+- **Conversations plus denses sur mobile** (profils adultes) : police 17→15,5px, interligne 1,65→1,5,
+  marge interne des bulles 13/17→10/13px, écart entre messages 12→8px, largeur utile 88→92%.
+  Mesuré sur une vraie conversation : **−21,5 % de hauteur à faire défiler** (10072→7903px).
+  Les profils enfants (Zya, Zélie) gardent la mise en page aérée d'origine pour la lisibilité.
+- **Barre du haut allégée sur mobile** : le sélecteur de modèle y faisait doublon avec celui de la
+  barre de saisie, et ⚡ Comparer saturait la ligne (~470px de contenu pour 375px d'écran).
+  Les deux sont désormais dans le menu (+). Résultat : `☰ · titre · + · ⚙️`.
+- **La barre du haut se rétracte quand on descend** dans une conversation et revient dès qu'on
+  remonte (mobile uniquement) : 63px d'écran rendus à la lecture (`useHideOnScroll`).
+- **Statistiques par message (tk · $) masquées sur mobile adulte** — bruit visuel en longue
+  conversation ; le total reste affiché dans le compteur de dépenses.
+
+### Technique
+- Version : `1.46` — SW cache : `ricard-ai-v46`
+- Rendu desktop inchangé (vérifié : police 16px, interligne 1,65, padding 20/24, header complet).
+
+---
+
 ## [1.45] — 2026-09-09 · Fix sync famille qui écrasait la clé API entre appareils
 
 ### Corrigé

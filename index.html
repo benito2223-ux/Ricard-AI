@@ -407,7 +407,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.45';
+const APP_VERSION = '1.46';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -418,6 +418,29 @@ function useIsMobile() {
     return () => window.removeEventListener('resize', h);
   }, []);
   return m;
+}
+
+// Masque la barre du haut quand on descend dans une longue conversation, la réaffiche
+// dès qu'on remonte (mobile uniquement). Écoute en phase de capture sur document pour
+// rester valable même quand la liste est démontée/remontée (EmptyState ↔ ChatThread).
+function useHideOnScroll(enabled) {
+  const [hidden, setHidden] = useState(false);
+  useEffect(() => {
+    if (!enabled) { setHidden(false); return; }
+    let lastY = 0, cur = false;
+    const onScroll = e => {
+      const el = e.target;
+      if (!el?.classList?.contains?.('scroll-y')) return;
+      const y = el.scrollTop, dy = y - lastY;
+      if (Math.abs(dy) < 10) return;         // ignore les micro-scrolls / rebonds iOS
+      lastY = y;
+      const next = y > 60 && dy > 0;         // vers le bas = masque · vers le haut ou en haut = affiche
+      if (next !== cur) { cur = next; setHidden(next); }
+    };
+    document.addEventListener('scroll', onScroll, true);
+    return () => document.removeEventListener('scroll', onScroll, true);
+  }, [enabled]);
+  return hidden;
 }
 
 // ─── Palette — Punk Comics Fluo (Mitchell Design System) ────
@@ -2544,6 +2567,7 @@ const IB = { background:'none', border:'none', cursor:'pointer', padding:4, bord
 function ChatHeader({ tabId, title, icon, accentColor }) {
   const { state, dispatch, sendMessage } = useApp();
   const isMobile = useIsMobile();
+  const hideBar = useHideOnScroll(isMobile);
   const t = state.tabs[tabId];
   const conv = t?.convs.find(c => c.id === t.activeId);
   const model = getModel(conv?.model);
@@ -2579,7 +2603,18 @@ function ChatHeader({ tabId, title, icon, accentColor }) {
   };
 
   return (
-    <div style={{ padding: isMobile ? '8px 12px' : '10px 20px', paddingTop: isMobile ? 'max(8px, env(safe-area-inset-top, 8px))' : '10px', borderBottom:`3px solid ${C.ink}`, background:C.paper, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, minHeight: isMobile ? 'calc(52px + env(safe-area-inset-top, 0px))' : '52px', flexShrink:0 }}>
+    <div style={{
+      padding: isMobile ? (hideBar ? '0 12px' : '8px 12px') : '10px 20px',
+      paddingTop: isMobile ? (hideBar ? 0 : 'max(8px, env(safe-area-inset-top, 8px))') : '10px',
+      borderBottom:`${isMobile && hideBar ? 0 : 3}px solid ${C.ink}`, background:C.paper,
+      display:'flex', alignItems:'center', justifyContent:'space-between', gap:8,
+      minHeight: isMobile ? (hideBar ? 0 : 'calc(52px + env(safe-area-inset-top, 0px))') : '52px',
+      maxHeight: isMobile && hideBar ? 0 : 200,
+      opacity: isMobile && hideBar ? 0 : 1,
+      overflow: isMobile ? 'hidden' : 'visible',
+      transition: isMobile ? 'max-height .22s ease, opacity .16s ease, min-height .22s ease' : 'none',
+      flexShrink:0,
+    }}>
       <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0, flex:1 }}>
         {isMobile && (
           <button onClick={() => dispatch({ type:'OPEN_DRAWER' })}
@@ -2619,14 +2654,18 @@ function ChatHeader({ tabId, title, icon, accentColor }) {
             </button>
           );
         })()}
-        <button onClick={() => dispatch({ type:'TOGGLE_COMPARE' })} title="Comparer deux modèles"
-          style={{ background:'#f7f4ec', border:`1px solid #e8e5dc`, borderRadius:20, padding: isMobile ? '4px 10px' : '3px 10px', fontSize: isMobile ? 16 : 11, cursor:'pointer', color:'#555', display:'flex', alignItems:'center', gap: isMobile ? 0 : 3, minHeight: isMobile ? 36 : 'auto' }}>
-          ⚡{!isMobile && ' Comparer'}
-        </button>
-        {model && (
+        {/* Mobile : ⚡ Comparer et le sélecteur de modèle vivent dans le menu (+) de la barre de
+            saisie — les répéter ici saturait la barre (~470px de contenu pour 375px d'écran). */}
+        {!isMobile && (
+          <button onClick={() => dispatch({ type:'TOGGLE_COMPARE' })} title="Comparer deux modèles"
+            style={{ background:'#f7f4ec', border:`1px solid #e8e5dc`, borderRadius:20, padding:'3px 10px', fontSize:11, cursor:'pointer', color:'#555', display:'flex', alignItems:'center', gap:3 }}>
+            ⚡ Comparer
+          </button>
+        )}
+        {model && !isMobile && (
           <button onClick={() => dispatch({ type:'TOGGLE_MODEL_PICKER' })}
-            style={{ background:'#f7f4ec', border:`1px solid #e8e5dc`, borderRadius:20, padding:'4px 12px', fontSize:13, cursor:'pointer', color:'#555', display:'flex', alignItems:'center', gap:4, maxWidth: isMobile ? 130 : 'none', overflow:'hidden' }}>
-            <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{isMobile ? model.name.split(' ').slice(-1)[0] : model.name}</span>
+            style={{ background:'#f7f4ec', border:`1px solid #e8e5dc`, borderRadius:20, padding:'4px 12px', fontSize:13, cursor:'pointer', color:'#555', display:'flex', alignItems:'center', gap:4, maxWidth:'none', overflow:'hidden' }}>
+            <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{model.name}</span>
             <span style={{ color:'#aaa', fontSize:10, flexShrink:0 }}>▾</span>
           </button>
         )}
@@ -2875,6 +2914,10 @@ function ImageMsgContent({ msg }) {
 function ChatThread({ tabId }) {
   const { state, dispatch, sendMessage } = useApp();
   const isMobile = useIsMobile();
+  // Les profils enfants gardent une mise en page aérée (lisibilité) ; les adultes ont un rendu
+  // condensé sur mobile, sinon une longue conversation devient interminable à faire défiler.
+  const kidDensity = tabId === 'zya' || tabId === 'zelie';
+  const showMsgStats = !(isMobile && !kidDensity);
   const [hoveredId, setHoveredId] = useState(null);
   const [speakingId, setSpeakingId] = useState(null);
   const [memorizingId, setMemorizingId] = useState(null);
@@ -3001,19 +3044,19 @@ function ChatThread({ tabId }) {
 
   return (
     <>
-    <div ref={ref} className="scroll-y" style={{ flex:1, minHeight:0, padding: isMobile ? '12px 10px' : '20px 24px', display:'flex', flexDirection:'column', gap:12 }}>
+    <div ref={ref} className="scroll-y" style={{ flex:1, minHeight:0, padding: isMobile ? (kidDensity ? '12px 10px' : '10px 8px') : '20px 24px', display:'flex', flexDirection:'column', gap: isMobile && !kidDensity ? 8 : 12 }}>
       {messages.map((msg, idx) => {
         const isLastDone = idx === messages.length - 1 && msg.role === 'assistant' && msg.done;
         return (
           <div key={msg.id}
             onMouseEnter={() => setHoveredId(msg.id)}
             onMouseLeave={() => setHoveredId(null)}
-            style={{ display:'flex', justifyContent: msg.role==='user' ? 'flex-end' : 'flex-start', gap:10, alignItems:'flex-start' }}>
+            style={{ display:'flex', justifyContent: msg.role==='user' ? 'flex-end' : 'flex-start', gap: isMobile && !kidDensity ? 7 : 10, alignItems:'flex-start' }}>
             {msg.role === 'assistant' && (
-              <div style={{ width:32, height:32, borderRadius:'50%', background:C.blue, border:`3px solid ${C.ink}`, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, color:C.ink, fontFamily:'var(--pc-font-display)', boxShadow:`2px 2px 0 ${C.ink}`, marginTop:2 }}>R</div>
+              <div style={{ width: isMobile && !kidDensity ? 26 : 32, height: isMobile && !kidDensity ? 26 : 32, borderRadius:'50%', background:C.blue, border:`3px solid ${C.ink}`, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize: isMobile && !kidDensity ? 12 : 14, color:C.ink, fontFamily:'var(--pc-font-display)', boxShadow:`2px 2px 0 ${C.ink}`, marginTop:2 }}>R</div>
             )}
-            <div style={{ maxWidth: msg.type === 'image' ? (isMobile ? '95%' : '80%') : (isMobile ? '88%' : '72%') }}>
-              <div style={{ background: msg.role==='user' ? C.yellow : 'white', border:`3px solid ${C.ink}`, borderRadius: msg.role==='user' ? 'var(--pc-radius-1)' : 'var(--pc-radius-2)', padding: isMobile ? '13px 17px' : '12px 16px', fontSize: isMobile ? 17 : 16, lineHeight:1.65, boxShadow:`4px 4px 0 ${C.ink}` }}>
+            <div style={{ maxWidth: msg.type === 'image' ? (isMobile ? '95%' : '80%') : (isMobile ? (kidDensity ? '88%' : '92%') : '72%') }}>
+              <div style={{ background: msg.role==='user' ? C.yellow : 'white', border:`3px solid ${C.ink}`, borderRadius: msg.role==='user' ? 'var(--pc-radius-1)' : 'var(--pc-radius-2)', padding: isMobile ? (kidDensity ? '13px 17px' : '10px 13px') : '12px 16px', fontSize: isMobile ? (kidDensity ? 17 : 15.5) : 16, lineHeight: isMobile && !kidDensity ? 1.5 : 1.65, boxShadow:`4px 4px 0 ${C.ink}` }}>
                 {msg.type === 'image' ? (
                   <ImageMsgContent msg={msg} />
                 ) : msg.role === 'user' ? (
@@ -3035,8 +3078,10 @@ function ChatThread({ tabId }) {
                   </div>
                 ) : <MsgContent content={msg.content} onOpenArtifact={openArtifact} />}
               </div>
-              <div style={{ display:'flex', gap:6, marginTop:5, fontSize:12, color:'#aaa', paddingLeft:4, alignItems:'center', minHeight:20 }}>
-                {msg.role === 'assistant' && msg.done && (msg.inTk || msg.outTk) && (
+              <div style={{ display:'flex', gap:6, marginTop: isMobile && !kidDensity ? 2 : 5, fontSize:12, color:'#aaa', paddingLeft:4, alignItems:'center', minHeight: isMobile && !kidDensity ? 18 : 20 }}>
+                {/* tk/coût par message : masqué sur mobile adulte (bruit visuel en longue
+                    conversation) — le total reste affiché dans le compteur de dépenses. */}
+                {showMsgStats && msg.role === 'assistant' && msg.done && (msg.inTk || msg.outTk) && (
                   <><span>{((msg.inTk||0)+(msg.outTk||0)).toLocaleString()} tk</span><span>·</span><span>${estimateCost(conv?.model,msg.inTk||0,msg.outTk||0).toFixed(5)}</span></>
                 )}
                 {msg.role === 'assistant' && !msg.done && (
@@ -3047,7 +3092,7 @@ function ChatThread({ tabId }) {
                   <button
                     onClick={() => handleSpeak(msg)}
                     title={speakingId === msg.id ? 'Arrêter la lecture' : 'Lire à voix haute'}
-                    style={{ ...ACT_BTN, marginLeft: (msg.inTk || msg.outTk) ? 4 : 'auto',
+                    style={{ ...ACT_BTN, marginLeft: (showMsgStats && (msg.inTk || msg.outTk)) ? 4 : 'auto',
                       opacity: (isMobile || tabId === 'zelie') ? 1 : (hoveredId === msg.id ? 1 : 0),
                       transition:'opacity .15s', padding: tabId === 'zelie' ? '3px 9px' : '1px 6px',
                       background: speakingId === msg.id ? (tabId === 'zelie' ? '#fce7f3' : '#eef3fd') : (tabId === 'zelie' ? '#fff5f9' : 'transparent'),
@@ -3328,26 +3373,56 @@ function InputArea({ tabId, placeholder, socratic }) {
                     style={{ background: showPlusMenu ? C.ink : '#f1eee5', border:`2px solid ${showPlusMenu ? C.ink : C.faint}`, borderRadius:'50%', width:38, height:38, cursor:'pointer', color: showPlusMenu ? 'white' : '#666', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, fontWeight:300, flexShrink:0, transition:'all .15s', lineHeight:1 }}>
                     {showPlusMenu ? '×' : '+'}
                   </button>
-                  {/* Menu (+) — simplifié pour kids : sans génération d'image */}
-                  {showPlusMenu && (
-                    <div style={{ position:'absolute', bottom:46, left:0, background:'white', border:`3px solid ${C.ink}`, borderRadius:'var(--pc-radius-2)', boxShadow:`4px 4px 0 ${C.ink}`, padding:'6px 0', minWidth:170, zIndex:50 }}>
-                      <button onClick={() => { cameraRef.current?.click(); setShowPlusMenu(false); }}
-                        style={{ width:'100%', textAlign:'left', padding:'10px 16px', background:'none', border:'none', cursor:'pointer', fontSize:15, display:'flex', alignItems:'center', gap:10, color:C.ink }}>
-                        <span>📷</span><span>Prendre une photo</span>
-                      </button>
-                      <button onClick={() => { fileRef.current?.click(); setShowPlusMenu(false); }}
-                        style={{ width:'100%', textAlign:'left', padding:'10px 16px', background:'none', border:'none', cursor:'pointer', fontSize:15, display:'flex', alignItems:'center', gap:10, color:C.ink, borderTop:`1px solid #f0ede4` }}>
-                        <span>📎</span><span style={{ display:'flex', alignItems:'center', gap:6 }}>Joindre un fichier{attachments.length > 0 && <span style={{ fontSize:11, background:C.blue, color:'white', borderRadius:999, padding:'1px 6px', fontWeight:700 }}>{attachments.length}</span>}</span>
-                      </button>
-                      {/* Génération image — uniquement pour les adultes */}
-                      {tabId !== 'zya' && tabId !== 'zelie' && (
-                        <button onClick={() => { setImageMode(v => !v); setShowPlusMenu(false); }}
-                          style={{ width:'100%', textAlign:'left', padding:'10px 16px', background: imageMode ? '#f3e8ff' : 'none', border:'none', cursor:'pointer', fontSize:15, display:'flex', alignItems:'center', gap:10, color: imageMode ? '#7c3aed' : C.ink, borderTop:`1px solid #f0ede4` }}>
-                          <span>🎨</span><span>{imageMode ? '✓ Mode illustration actif' : 'Générer une illustration'}</span>
-                        </button>
-                      )}
-                    </div>
-                  )}
+                  {/* Menu (+) — feuille remontant du bas.
+                      NE PAS repasser en position:absolute : le conteneur de la zone de saisie est
+                      en overflow:hidden, ce qui coupait le menu et masquait une partie des options. */}
+                  {showPlusMenu && (() => {
+                    const adult = tabId !== 'zya' && tabId !== 'zelie';
+                    const ITEM = { width:'100%', textAlign:'left', padding:'15px 20px', background:'none', border:'none', cursor:'pointer', fontSize:16, display:'flex', alignItems:'center', gap:13, color:C.ink, borderTop:`1px solid #f0ede4`, fontFamily:'var(--pc-font-body)' };
+                    return (
+                      <>
+                        <div onClick={() => setShowPlusMenu(false)}
+                          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.35)', zIndex:150 }} />
+                        <div style={{ position:'fixed', left:0, right:0, bottom:0, background:'white', borderTop:`4px solid ${C.ink}`, borderRadius:'20px 20px 0 0', zIndex:151, paddingBottom:'max(10px, env(safe-area-inset-bottom, 0px))', maxHeight:'75dvh', overflowY:'auto' }}>
+                          <div style={{ display:'flex', justifyContent:'center', padding:'10px 0 4px' }}>
+                            <div style={{ width:40, height:4, borderRadius:999, background:C.faint }} />
+                          </div>
+                          <button onClick={() => { cameraRef.current?.click(); setShowPlusMenu(false); }}
+                            style={{ ...ITEM, borderTop:'none' }}>
+                            <span style={{ fontSize:20 }}>📷</span><span>Prendre une photo</span>
+                          </button>
+                          <button onClick={() => { fileRef.current?.click(); setShowPlusMenu(false); }} style={ITEM}>
+                            <span style={{ fontSize:20 }}>📎</span>
+                            <span style={{ display:'flex', alignItems:'center', gap:6 }}>Joindre un fichier{attachments.length > 0 && <span style={{ fontSize:11, background:C.blue, color:'white', borderRadius:999, padding:'1px 6px', fontWeight:700 }}>{attachments.length}</span>}</span>
+                          </button>
+                          {adult && (
+                            <button onClick={() => { setImageMode(v => !v); setShowPlusMenu(false); }}
+                              style={{ ...ITEM, background: imageMode ? '#f3e8ff' : 'none', color: imageMode ? '#7c3aed' : C.ink }}>
+                              <span style={{ fontSize:20 }}>🎨</span><span>{imageMode ? '✓ Mode illustration actif' : 'Générer une illustration'}</span>
+                            </button>
+                          )}
+                          {adult && (
+                            <button onClick={() => { dispatch({ type:'TOGGLE_MODEL_PICKER' }); setShowPlusMenu(false); }} style={ITEM}>
+                              <span style={{ fontSize:20 }}>🤖</span>
+                              <span style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
+                                Changer de modèle
+                                {model?.name && <span style={{ fontSize:12, color:'#888', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>· {model.name}</span>}
+                              </span>
+                            </button>
+                          )}
+                          {adult && (
+                            <button onClick={() => { dispatch({ type:'TOGGLE_COMPARE' }); setShowPlusMenu(false); }} style={ITEM}>
+                              <span style={{ fontSize:20 }}>⚡</span><span>Comparer deux modèles</span>
+                            </button>
+                          )}
+                          <button onClick={() => setShowPlusMenu(false)}
+                            style={{ ...ITEM, justifyContent:'center', color:C.muted, fontWeight:600, gap:0 }}>
+                            Annuler
+                          </button>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
                 {/* Badge attachements si fermé */}
                 {!showPlusMenu && attachments.length > 0 && (
