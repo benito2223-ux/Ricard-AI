@@ -278,12 +278,15 @@ function extractSharedSettings(settings) {
   return out;
 }
 
-async function cloudSaveConfig(settings) {
-  if (!CLOUD.enabled) return;
+// N'accepte QUE les champs réellement modifiés localement (voir appelant) : un appareil qui n'a
+// pas touché à `apiKey` ne doit jamais le repousser (même en valeur inchangée), sinon il écrase
+// la clé fraîchement changée sur un autre appareil dès que ce champ non-modifié transite.
+async function cloudSaveConfig(changedFields) {
+  if (!CLOUD.enabled || !Object.keys(changedFields).length) return;
   try {
-    const payload = { ...extractSharedSettings(settings), updatedAt: new Date().toISOString() };
+    const payload = { ...changedFields, updatedAt: new Date().toISOString() };
     await CLOUD.db.collection('ricard_config').doc(getFamilyId()).set(payload, { merge: true });
-    console.log('[Firebase] ☁️ config famille sauvegardée');
+    console.log('[Firebase] ☁️ config famille sauvegardée', Object.keys(changedFields));
   } catch(e) { console.warn('[Firebase] config save:', e.message); }
 }
 
@@ -404,7 +407,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.44';
+const APP_VERSION = '1.45';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -1729,6 +1732,10 @@ function AppProvider({ children }) {
   const lastPushedCfg = useRef('');
   // Signature JSON des derniers réglages reçus depuis Firebase (pour éviter re-push)
   const lastReceivedCfg = useRef('');
+  // Dernier état partagé connu comme synchronisé avec Firestore (reçu ou poussé avec succès).
+  // Sert de référence pour ne pousser QUE les champs réellement modifiés localement — un appareil
+  // qui n'a jamais touché à `apiKey` ne doit pas pouvoir écraser une clé changée ailleurs.
+  const lastSyncedShared = useRef(null);
 
   // Persist settings localement + push vers Firebase si les réglages partagés changent
   useEffect(() => {
@@ -1743,7 +1750,15 @@ function AppProvider({ children }) {
     // Ne push que si différent de ce qu'on a reçu ET de ce qu'on a déjà poussé
     if (sig !== lastPushedCfg.current && sig !== lastReceivedCfg.current) {
       lastPushedCfg.current = sig;
-      cloudSaveConfig(state.settings);
+      // Diff champ par champ contre la dernière base connue synchronisée : seuls les champs qui
+      // ont vraiment changé localement sont envoyés (jamais toute la liste SHARED_SETTINGS_KEYS).
+      const baseline = lastSyncedShared.current;
+      const changed = {};
+      SHARED_SETTINGS_KEYS.forEach(k => {
+        if (!baseline || JSON.stringify(shared[k]) !== JSON.stringify(baseline[k])) changed[k] = shared[k];
+      });
+      lastSyncedShared.current = shared;
+      cloudSaveConfig(changed);
     }
   }, [state.settings]);
 
@@ -1759,6 +1774,9 @@ function AppProvider({ children }) {
       // Marque comme reçu AVANT dispatch pour bloquer le re-push
       lastReceivedCfg.current = sig;
       lastPushedCfg.current   = sig;
+      // Met à jour la base de référence : ces champs sont maintenant connus comme synchronisés,
+      // donc un futur push local ne les réenverra QUE s'ils changent vraiment après ce point.
+      lastSyncedShared.current = { ...(lastSyncedShared.current || {}), ...remoteShared };
 
       // Sauvegarde locale de la clé API si elle arrive
       if (remoteShared.apiKey) lsSet('apikey_backup', remoteShared.apiKey);

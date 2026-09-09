@@ -5,6 +5,26 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [1.45] — 2026-09-09 · Fix sync famille qui écrasait la clé API entre appareils
+
+### Corrigé
+- **🚨 Un appareil de la famille pouvait repousser sa clé API périmée sur les autres, sans même
+  y toucher.** La synchro Firebase envoyait TOUJOURS l'intégralité des champs partagés
+  (`SHARED_SETTINGS_KEYS`) dès qu'un seul réglage changeait localement — donc un appareil qui
+  modifiait juste un budget ou un modèle par défaut repoussait au passage sa clé API (potentiellement
+  périmée si elle n'avait pas encore reçu la dernière mise à jour) et écrasait celle d'un autre
+  appareil, même sans reload. C'était la cause du "la clé change toute seule" observé en debug.
+  - **Fix** : chaque appareil ne pousse désormais que les champs **réellement modifiés localement**
+    depuis la dernière synchro connue (`lastSyncedShared`, diff champ par champ). Un appareil qui n'a
+    jamais retouché `apiKey` ne peut plus l'inclure dans son push, donc plus jamais l'écraser ailleurs.
+  - Résultat concret : changer la clé API sur un appareil se propage désormais fiablement à tous les
+    autres, même s'ils sont restés ouverts avec l'ancienne valeur en mémoire.
+
+### Technique
+- Version : `1.45` — SW cache : `ricard-ai-v45`
+
+---
+
 ## [1.44] — 2026-09-09 · Retry automatique sur rate-limit Z.AI
 
 ### Ajouté
