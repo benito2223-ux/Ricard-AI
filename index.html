@@ -30,6 +30,7 @@
 <!-- Favicon navigateur -->
 <link rel="icon" type="image/png" sizes="48x48" href="./favicon.png">
 <meta name="theme-color" content="#1a1a1a">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Ricard AI">
@@ -308,7 +309,7 @@ async function cloudSave(pid, tab, convs) {
 // ─── Sync config famille via Firebase (clé API + réglages) ───
 // Champs synchronisés entre tous les appareils de la famille
 const SHARED_SETTINGS_KEYS = [
-  'apiKey', 'provider', 'zaiCodingPlan', 'defaultModels', 'defaultImageModel',
+  'apiKey', 'provider', 'zaiCodingPlan', 'defaultModels', 'defaultImageModel', 'modelLocks',
   'budgets', 'dailyLimits', 'accessHours', 'dailyGoals',
   'socraticMode', 'profileContext', 'profileCodes',
   'appCode', 'autoLockMinutes',
@@ -461,7 +462,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.49';
+const APP_VERSION = '1.50';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -916,6 +917,20 @@ function sanitizeImageModel(img, prov) {
   if (prov !== 'zai') return img || 'openai/dall-e-3';
   return (img && ZAI_IMAGE_MODELS.some(m => m.id === img)) ? img : 'cogview-4';
 }
+// Verrouillage du modèle par profil (contrôle parental) : un profil verrouillé ne voit
+// pas le sélecteur de modèle ET ses requêtes partent toujours sur le modèle défini
+// par les parents dans Réglages → Modèles par profil (double barrière UI + envoi).
+function isModelLocked(pid, settings) {
+  if (!pid) return false;
+  const prof = getProfile(pid);
+  const def = prof?.isKid ? true : false; // enfants verrouillés par défaut, parents libres
+  return (settings?.modelLocks?.[pid] ?? def) === true;
+}
+function forcedModelFor(pid, tabId, settings) {
+  const provId = settings?.provider || DEFAULT_PROVIDER;
+  const dm = settings?.defaultModels ?? DEFAULT_MODELS_BY_PROVIDER[provId];
+  return sanitizeModelForProvider(dm?.[tabId], provId) || DEFAULT_MODEL;
+}
 function loadSettings() {
   const s = lsGet('settings', {});
   // Double sécurité : clé API sauvegardée aussi séparément
@@ -940,6 +955,9 @@ function loadSettings() {
     appCode:         s.appCode         ?? '',
     autoLockMinutes: s.autoLockMinutes ?? 0,
     defaultModels:   sanitizeDefaultModels(s.defaultModels, provider),
+    // Verrouillage du modèle IA par profil (contrôle parental) : verrouillé par défaut
+    // pour les enfants, libre pour les parents. Synchronisé sur tous les appareils.
+    modelLocks:      s.modelLocks      ?? { papa:false, maman:false, zya:true, zelie:true },
     profileContext:  s.profileContext  ?? { papa:'', maman:'', zya:'', zelie:'' },
     familyMemories:  s.familyMemories  ?? { papa:[], maman:[], zya:[], zelie:[] },
     memoryAutoCapture: s.memoryAutoCapture ?? true,
@@ -1666,6 +1684,8 @@ function reducer(state, action) {
       return { ...state, tabs: { ...state.tabs, [tabId]: { convs, activeId } } };
     }
     case 'SET_MODEL': {
+      // Contrôle parental : profil verrouillé → le modèle ne change pas
+      if (isModelLocked(state.profile, state.settings)) return state;
       const { tabId, model } = action.payload;
       const t = state.tabs[tabId];
       return {
@@ -2073,7 +2093,11 @@ function AppProvider({ children }) {
     const controller = new AbortController();
     if (abortRef) abortRef.current = controller;
     const provId = getActiveProviderId();
-    const modelId = sanitizeModelForProvider(conv.model, provId) || DEFAULT_MODELS_BY_PROVIDER[provId]?.[t] || DEFAULT_MODEL;
+    // Profil verrouillé → le modèle des parents est imposé, même sur une vieille
+    // conversation créée avant le verrouillage (le verrou ne repose pas que sur l'UI)
+    const modelId = isModelLocked(state.profile, state.settings)
+      ? forcedModelFor(state.profile, t, state.settings)
+      : (sanitizeModelForProvider(conv.model, provId) || DEFAULT_MODELS_BY_PROVIDER[provId]?.[t] || DEFAULT_MODEL);
 
     await streamChat({
       apiKey: state.settings.apiKey,
@@ -2713,6 +2737,7 @@ function Sidebar({ collapsed, onToggle }) {
       {/* Bottom */}
       <div style={{ padding:'10px 8px', borderTop:`1px dashed ${C.faint}`, display:'flex', alignItems:'center', gap:8 }}>
         <button onClick={() => dispatch({ type:'TOGGLE_SETTINGS' })} style={{ ...IB, fontSize:16 }} title="Réglages">⚙️</button>
+        <button onClick={() => dispatch({ type:'SET_PROFILE', payload:null })} style={{ ...IB, fontSize:16 }} title="Changer de profil">👥</button>
         {!collapsed && <>
           <button onClick={() => dispatch({ type:'TOGGLE_DASHBOARD' })} style={{ background:'none', border:'none', cursor:'pointer', fontSize:13, color:C.muted, flex:1, textAlign:'left', padding:0 }}>
             ${state.monthCost.toFixed(2)} ce mois
@@ -2826,7 +2851,7 @@ function ChatHeader({ tabId, title, icon, accentColor }) {
             ⚡ Comparer
           </button>
         )}
-        {model && !isMobile && (
+        {model && !isMobile && !isModelLocked(state.profile, state.settings) && (
           <button onClick={() => dispatch({ type:'TOGGLE_MODEL_PICKER' })}
             style={{ background:'#f7f4ec', border:`1px solid #e8e5dc`, borderRadius:20, padding:'4px 12px', fontSize:13, cursor:'pointer', color:'#555', display:'flex', alignItems:'center', gap:4, maxWidth:'none', overflow:'hidden' }}>
             <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{model.name}</span>
@@ -3565,7 +3590,7 @@ function InputArea({ tabId, placeholder, socratic }) {
                               <span style={{ fontSize:20 }}>🎨</span><span>{imageMode ? '✓ Mode illustration actif' : 'Générer une illustration'}</span>
                             </button>
                           )}
-                          {adult && (
+                          {adult && !isModelLocked(state.profile, state.settings) && (
                             <button onClick={() => { dispatch({ type:'TOGGLE_MODEL_PICKER' }); setShowPlusMenu(false); }} style={ITEM}>
                               <span style={{ fontSize:20 }}>🤖</span>
                               <span style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
@@ -3915,10 +3940,16 @@ function FlashcardsModal({ conv, apiKey, onClose }) {
 function MoodPicker({ pid, accentColor, onPick }) {
   const profile = getProfile(pid);
   const name = profile?.name || pid;
+  // « Plus tard » : masque pour la journée (pas de harcèlement au retour dans l'app)
+  const todayKey = 'mood_later_' + pid + '_' + dateKey();
+  const [later, setLater] = useState(() => { try { return !!sessionStorage.getItem(todayKey); } catch { return false; } });
+  if (later) return null;
   return (
     <div style={{ padding:'14px 16px', background:`linear-gradient(135deg,${accentColor}18,${accentColor}08)`, borderBottom:`2px solid ${accentColor}44`, flexShrink:0, display:'flex', flexDirection:'column', alignItems:'center', gap:10 }}>
-      <div style={{ fontSize:13, fontWeight:700, color:accentColor, letterSpacing:.3 }}>
-        Comment tu te sens aujourd'hui, {name} ?
+      <div style={{ fontSize:13, fontWeight:700, color:accentColor, letterSpacing:.3, display:'flex', alignItems:'center', gap:10 }}>
+        <span>Comment tu te sens aujourd'hui, {name} ?</span>
+        <button onClick={() => { try { sessionStorage.setItem(todayKey, '1'); } catch {} setLater(true); }}
+          style={{ background:'none', border:'none', cursor:'pointer', fontSize:11, color:'#aaa', padding:0, textDecoration:'underline', fontVariationSettings:'normal' }}>plus tard</button>
       </div>
       <div style={{ display:'flex', gap:8, flexWrap:'wrap', justifyContent:'center' }}>
         {MOODS.map(m => (
@@ -3959,8 +3990,12 @@ function ZyaTab() {
       {/* ── Header compact ── */}
       <div style={{ padding: isMobile ? '8px 12px' : '10px 20px', borderBottom:`1.5px solid #d4c8f0`, background:'white', flexShrink:0 }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-            <div style={{ width:32, height:32, borderRadius:'50%', background:`linear-gradient(135deg,${C.purple},#c87dd4)`, border:`2px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}>✨</div>
+          <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0 }}>
+            {isMobile && (
+              <button onClick={() => dispatch({ type:'OPEN_DRAWER' })} title="Mes conversations"
+                style={{ background:'none', border:'none', cursor:'pointer', fontSize:22, padding:'0 2px', flexShrink:0, color:C.ink, minHeight:44, minWidth:44, display:'flex', alignItems:'center', justifyContent:'center' }}>☰</button>
+            )}
+            <div style={{ width:32, height:32, borderRadius:'50%', background:`linear-gradient(135deg,${C.purple},#c87dd4)`, border:`2px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>✨</div>
             <div>
               <div style={{ fontSize:15, fontWeight:700, color:C.purple }}>Nova</div>
               <div style={{ fontSize:10, color:'#aaa', display:'flex', gap:5 }}>
@@ -3972,6 +4007,8 @@ function ZyaTab() {
           </div>
           {/* Contrôles droite */}
           <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+            <button onClick={() => dispatch({ type:'SET_PROFILE', payload:null })} title="Changer de profil"
+              style={{ width:32, height:32, borderRadius:'50%', background:'white', border:`2px solid ${C.ink}`, cursor:'pointer', fontSize:15, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>🚪</button>
             {/* Bouton nouvelle conversation — toujours visible */}
             <button onClick={() => dispatch({ type:'NEW_CONV', payload:{ tabId:'zya' } })}
               title="Nouvelle conversation"
@@ -4055,8 +4092,12 @@ function ZelieTab() {
       {/* ── Header compact ── */}
       <div style={{ padding: isMobile ? '8px 12px' : '10px 20px', borderBottom:`1.5px solid #f8c8dc`, background:'white', flexShrink:0 }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-            <div style={{ width:34, height:34, borderRadius:'50%', background:`linear-gradient(135deg,${C.pink},${C.yellow})`, border:`2px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18 }}>🌸</div>
+          <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0 }}>
+            {isMobile && (
+              <button onClick={() => dispatch({ type:'OPEN_DRAWER' })} title="Mes conversations"
+                style={{ background:'none', border:'none', cursor:'pointer', fontSize:22, padding:'0 2px', flexShrink:0, color:C.ink, minHeight:44, minWidth:44, display:'flex', alignItems:'center', justifyContent:'center' }}>☰</button>
+            )}
+            <div style={{ width:34, height:34, borderRadius:'50%', background:`linear-gradient(135deg,${C.pink},${C.yellow})`, border:`2px solid ${C.ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>🌸</div>
             <div>
               <div style={{ fontSize:15, fontWeight:700, color:C.pink, fontFamily:"'Permanent Marker',cursive" }}>Pixel</div>
               <div style={{ fontSize:10, color:'#aaa', display:'flex', gap:5 }}>
@@ -4067,6 +4108,8 @@ function ZelieTab() {
             </div>
           </div>
           <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+            <button onClick={() => dispatch({ type:'SET_PROFILE', payload:null })} title="Changer de profil"
+              style={{ width:32, height:32, borderRadius:'50%', background:'white', border:`2px solid ${C.ink}`, cursor:'pointer', fontSize:15, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>🚪</button>
             {/* Bouton nouvelle conversation — toujours visible */}
             <button onClick={() => dispatch({ type:'NEW_CONV', payload:{ tabId:'zelie' } })}
               title="Nouvelle conversation"
@@ -4319,7 +4362,7 @@ function AgendaView({ isAdmin, isMobile }) {
 
 // ─── Family Tab ───────────────────────────────────────────────
 function FamilyTab() {
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const isMobile = useIsMobile();
   const isAdmin = getProfile(state.profile)?.admin;
   const [view, setView]   = useState('messages'); // 'messages' | 'dashboard' | 'suivi'
@@ -4367,9 +4410,13 @@ function FamilyTab() {
   return (
     <div style={{ flex:1, display:'flex', flexDirection:'column', minHeight:0, background:'#f0faf8' }}>
       {/* Header avec onglets */}
-      <div style={{ padding:'10px 20px', borderBottom:`1.5px solid #b8e0d8`, background:'white', display:'flex', alignItems:'center', justifyContent:'space-between', minHeight:52, flexShrink:0 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-          <span style={{ fontSize:22 }}>👨‍👩‍👧</span>
+      <div style={{ padding: isMobile ? '8px 12px' : '10px 20px', paddingTop: isMobile ? 'max(8px, env(safe-area-inset-top, 8px))' : '10px', borderBottom:`1.5px solid #b8e0d8`, background:'white', display:'flex', alignItems:'center', justifyContent:'space-between', minHeight:52, flexShrink:0 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12, minWidth:0 }}>
+          {isMobile && (
+            <button onClick={() => dispatch({ type:'OPEN_DRAWER' })} title="Menu"
+              style={{ background:'none', border:'none', cursor:'pointer', fontSize:22, padding:'0 2px', flexShrink:0, color:C.ink, minHeight:44, minWidth:44, display:'flex', alignItems:'center', justifyContent:'center' }}>☰</button>
+          )}
+          <span style={{ fontSize:22, flexShrink:0 }}>👨‍👩‍👧</span>
           <div>
             <div style={{ fontSize:16, fontWeight:700, color:C.teal }}>Famille Ricard</div>
             <div style={{ fontSize:11, color:'#aaa' }}>{view === 'messages' ? 'Messages partagés' : view === 'agenda' ? 'Agenda familial' : view === 'suivi' ? 'Suivi parental' : 'Tableau de bord famille'}</div>
@@ -4987,6 +5034,8 @@ function ModelPicker() {
 
   const isMobile = useIsMobile();
 
+  // Profil verrouillé (contrôle parental) → sélecteur de modèle inaccessible
+  if (isModelLocked(state.profile, state.settings)) return null;
   if (!state.showModelPicker) return null;
 
   const tabId = state.tab;
@@ -5178,6 +5227,27 @@ function Settings() {
   const isMobile = useIsMobile();
 
   if (!state.showSettings) return null;
+
+  // 🔒 Contrôle parental : les profils enfants n'ont PAS accès aux réglages
+  // (la clé API, les budgets, les modèles et le verrouillage sont réservés aux parents)
+  if (!getProfile(state.profile)?.admin) {
+    return (
+      <>
+        <div onClick={() => dispatch({ type:'TOGGLE_SETTINGS' })} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.3)', zIndex:100 }} />
+        <div style={{ position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)', width:'calc(100vw - 48px)', maxWidth:360, background:C.paper, border:`4px solid ${C.ink}`, borderRadius:'var(--pc-radius-3)', boxShadow:'var(--pc-shadow-lg)', zIndex:101, padding:24, textAlign:'center' }}>
+          <div style={{ fontSize:40 }}>🔒</div>
+          <div style={{ fontFamily:'var(--pc-font-display)', fontSize:19, margin:'8px 0 6px' }}>Réglages des parents</div>
+          <div style={{ fontSize:13, color:'#888', lineHeight:1.5, marginBottom:16 }}>
+            Les réglages (clé, modèles, budgets) sont réservés à Papa et Maman.
+          </div>
+          <button onClick={() => dispatch({ type:'SET_PROFILE', payload:null })}
+            style={{ padding:'10px 18px', border:`3px solid ${C.ink}`, borderRadius:12, background:C.yellow, cursor:'pointer', fontSize:14, fontWeight:700, boxShadow:`3px 3px 0 ${C.ink}` }}>
+            👥 Changer de profil
+          </button>
+        </div>
+      </>
+    );
+  }
 
   const save = () => {
     dispatch({ type:'SET_SETTINGS', payload:s });
@@ -5428,34 +5498,55 @@ function Settings() {
             </p>
           </section>
 
-          {/* ── Modèles par défaut ──────────────────────── */}
+          {/* ── Modèles par profil + verrouillage ───────── */}
           <section>
-            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:4 }}>🤖 Modèles par défaut</div>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:4 }}>🤖 Modèles par profil</div>
             <div style={{ fontSize:11, color:'#aaa', marginBottom:10, display:'flex', alignItems:'center', gap:6 }}>
               {liveStatus === 'loading' && <><span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background:C.orange, animation:'pulse 1s infinite' }} /> Chargement des modèles…</>}
               {liveStatus === 'done'    && <><span style={{ color:C.green }}>✓</span> {provS === 'zai' ? `${ZAI_MODELS.length} modèles Z.AI (GLM)` : `${liveModels.length} modèles disponibles (OpenRouter live)`}</>}
               {liveStatus === 'error'   && <><span style={{ color:C.red }}>⚠</span> Liste locale ({MODELS.length} modèles)</>}
             </div>
-            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
               {[
-                { tab:'chat',   label:'💬 Chat'          },
-                { tab:'code',   label:'⌨️ Code'          },
-                { tab:'design', label:'🎨 Design'        },
-                { tab:'zya',    label:'🌟 Zya (Nova)'    },
-                { tab:'zelie',  label:'🌸 Zélie (Pixel)' },
-              ].map(({ tab, label }) => (
-                <div key={tab}>
-                  <div style={{ fontSize:12, fontWeight:600, color:C.ink, marginBottom:4 }}>{label}</div>
-                  <ModelSelectInline
-                    value={s.defaultModels?.[tab] ?? DEFAULT_MODELS_PER_TAB[tab]}
-                    onChange={val => setS(p => ({ ...p, defaultModels: { ...(p.defaultModels ?? DEFAULT_MODELS_PER_TAB), [tab]: val } }))}
-                    allModels={liveModels}
-                    status={liveStatus}
-                  />
-                </div>
-              ))}
+                { pid:'papa',  rows:[{ tab:'chat', label:'💬 Chat' }, { tab:'code', label:'⌨️ Code' }] },
+                { pid:'maman', rows:[{ tab:'chat', label:'💬 Chat' }, { tab:'code', label:'⌨️ Code' }] },
+                { pid:'zya',   rows:[{ tab:'zya',  label:'🌟 Nova (Zya)' }] },
+                { pid:'zelie', rows:[{ tab:'zelie',label:'🌸 Pixel (Zélie)' }] },
+              ].map(({ pid, rows }) => {
+                const prof = getProfile(pid);
+                const locked = s.modelLocks?.[pid] ?? prof?.isKid; // enfants verrouillés par défaut
+                return (
+                  <div key={pid} style={{ border:`1.5px solid ${C.faint}`, borderRadius:10, padding:'10px 12px', display:'flex', flexDirection:'column', gap:8 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      <ProfileAvatar profile={prof} size={24} />
+                      <span style={{ fontSize:13, fontWeight:700, flex:1 }}>{prof?.name}</span>
+                      <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, cursor:'pointer', color: locked ? C.ink : '#999' }}>
+                        <input type="checkbox" checked={!!locked}
+                          onChange={e => setS(p => ({ ...p, modelLocks: { ...(p.modelLocks ?? {}), [pid]: e.target.checked } }))} />
+                        🔒 Verrouillé
+                      </label>
+                    </div>
+                    {rows.map(({ tab, label }) => (
+                      <div key={tab} style={{ display:'flex', alignItems:'center', gap:8 }}>
+                        <span style={{ fontSize:12, color:'#666', width:110, flexShrink:0 }}>{label}</span>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <ModelSelectInline
+                            value={s.defaultModels?.[tab] ?? DEFAULT_MODELS_PER_TAB[tab]}
+                            onChange={val => setS(p => ({ ...p, defaultModels: { ...(p.defaultModels ?? DEFAULT_MODELS_PER_TAB), [tab]: val } }))}
+                            allModels={liveModels}
+                            status={liveStatus}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
             </div>
-            <p style={{ fontSize:11, color:'#aaa', margin:'10px 0 0' }}>S'applique aux nouvelles conversations. Les conversations existantes gardent leur modèle.</p>
+            <p style={{ fontSize:11, color:'#aaa', margin:'10px 0 0' }}>
+              🔒 Verrouillé = ce profil ne peut pas changer de modèle (sélecteur caché, choix imposé même sur les vieilles conversations).
+              S'applique aux nouvelles conversations et à l'envoi ; les parents déverrouillent librement.
+            </p>
           </section>
 
           {/* ── Section Cloud ───────────────────────────── */}
@@ -6071,12 +6162,22 @@ function MobileDrawer() {
               gap:6, minHeight:44 }}>
             🔍 <span>Recherche</span>
           </button>
-          <button onClick={() => { dispatch({ type:'TOGGLE_SETTINGS' }); close(); }}
-            style={{ flex:1, padding:'10px 4px', border:`2px solid ${C.faint}`,
-              borderRadius:10, background:'white', cursor:'pointer', fontSize:13,
+          {getProfile(pid)?.admin && (
+            <button onClick={() => { dispatch({ type:'TOGGLE_SETTINGS' }); close(); }}
+              style={{ flex:1, padding:'10px 4px', border:`2px solid ${C.faint}`,
+                borderRadius:10, background:'white', cursor:'pointer', fontSize:13,
+                display:'flex', alignItems:'center', justifyContent:'center',
+                gap:6, minHeight:44 }}>
+              ⚙️ <span>Réglages</span>
+            </button>
+          )}
+          <button onClick={() => { close(); dispatch({ type:'SET_PROFILE', payload:null }); }}
+            title="Revenir au choix du profil"
+            style={{ flex:1, padding:'10px 4px', border:`2px solid ${C.ink}`,
+              borderRadius:10, background:C.yellow, cursor:'pointer', fontSize:13, fontWeight:700,
               display:'flex', alignItems:'center', justifyContent:'center',
-              gap:6, minHeight:44 }}>
-            ⚙️ <span>Réglages</span>
+              gap:6, minHeight:44, boxShadow:`2px 2px 0 ${C.ink}` }}>
+            👥 <span>Profil</span>
           </button>
         </div>
       </div>
@@ -6368,6 +6469,49 @@ function PersonalizedSplash({ pid, onChangeProfile }) {
   );
 }
 
+// ─── Bannière d'installation PWA (iPhone) ─────────────────────
+// Sur iOS, SEULE Safari sait installer une PWA plein écran. Une icône ajoutée
+// depuis Chrome (ou un favori) ouvre l'app DANS le navigateur, avec la barre
+// d'adresse et les boutons de navigation — c'est le symptôme « pas une vraie app ».
+// Cette bannière ne s'affiche que sur iPhone, hors mode installé, et se ferme pour 7 jours.
+function InstallBanner() {
+  const [hidden, setHidden] = useState(() => {
+    try {
+      const until = Number(localStorage.getItem('ricard_hide_install_banner') || 0);
+      return Date.now() < until;
+    } catch { return false; }
+  });
+  if (hidden) return null;
+
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS
+  const standalone = window.navigator.standalone === true
+    || window.matchMedia('(display-mode: standalone)').matches;
+  const isChromeIOS = /CriOS/i.test(navigator.userAgent);
+  if (!isIOS || standalone) return null;
+
+  const dismiss = () => {
+    try { localStorage.setItem('ricard_hide_install_banner', String(Date.now() + 7 * 86400e3)); } catch {}
+    setHidden(true);
+  };
+
+  return (
+    <div style={{ position:'fixed', left:12, right:12, bottom:'calc(10px + env(safe-area-inset-bottom, 0px))', zIndex:500, background:C.ink, color:'white', borderRadius:14, padding:'12px 14px', boxShadow:'0 8px 24px rgba(0,0,0,.35)', display:'flex', alignItems:'flex-start', gap:10, maxWidth:520, margin:'0 auto' }}>
+      <span style={{ fontSize:22, flexShrink:0 }}>📲</span>
+      <div style={{ flex:1, minWidth:0, fontSize:12.5, lineHeight:1.5 }}>
+        <div style={{ fontWeight:700, marginBottom:2 }}>Installe Ricard AI en vraie app</div>
+        {isChromeIOS ? (
+          <>Chrome ne peut pas installer l'app sur iPhone. Ouvre <b>ricard-ai.surge.sh</b> dans <b>Safari</b> 🧭, puis bouton <b>Partager</b> ⬆️ → <b>« Sur l'écran d'accueil »</b>.</>
+        ) : (
+          <>Dans <b>Safari</b> : bouton <b>Partager</b> ⬆️ (carré avec la flèche) → <b>« Sur l'écran d'accueil »</b>. L'app s'ouvrira alors plein écran, sans barre d'adresse.</>
+        )}
+      </div>
+      <button onClick={dismiss} title="Fermer (7 jours)"
+        style={{ background:'none', border:'none', color:'#999', fontSize:18, cursor:'pointer', padding:2, flexShrink:0, lineHeight:1 }}>✕</button>
+    </div>
+  );
+}
+
 // ─── Root ─────────────────────────────────────────────────────
 function App() {
   const { state } = useApp();
@@ -6405,6 +6549,7 @@ root.render(
   <ErrorBoundary>
     <AppProvider>
       <App />
+      <InstallBanner />
     </AppProvider>
   </ErrorBoundary>
 );

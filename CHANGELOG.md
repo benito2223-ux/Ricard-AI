@@ -5,6 +5,46 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [1.50] — 2026-09-09 · Ergonomie mobile enfants, sortie de profil, verrouillage des modèles
+
+### Corrigé
+- **🚨 Impossible de changer de profil depuis l'intérieur de l'app.** Le bouton « Changer de
+  profil » n'existait qu'en desktop dans la barre de chat — sur mobile, PERSONNE ne pouvait sortir
+  (adultes compris), et les onglets enfants (Nova/Pixel) n'avaient aucun bouton de sortie, ni même
+  le ☰ d'accès à l'historique : un enfant mobile était littéralement enfermé dans sa conversation.
+  - **Fix** : bouton 🚪 « Changer de profil » dans les barres Nova et Pixel (toutes tailles) ;
+    ☰ ajouté dans les barres enfants et Famille sur mobile ; bouton « 👥 Profil » dans le drawer
+    mobile (tous profils) et dans la sidebar desktop ; ⚙️ du drawer réservé aux parents.
+- **🚨 Les profils enfants avaient accès aux Réglages complets — clé API comprise.** Depuis un
+  profil enfant (desktop), le ⚙️ ouvrait le panneau avec la clé en clair, les budgets, les modèles…
+  - **Fix** : écran de verrouillage « 🔒 Réglages des parents » pour les non-admin, avec bouton
+    « Changer de profil ». Double protection : le ⚙️ n'est même plus proposé aux enfants.
+- **Humeur du jour insistante** : le sélecteur d'humeur restait affiché jusqu'à choix forcé.
+  Un lien discret « plus tard » le masque pour la journée.
+
+### Ajouté
+- **📲 Bannière d'installation PWA sur iPhone** : sur iOS, seule Safari sait installer une PWA
+  plein écran — une icône ajoutée depuis Chrome ouvre l'app DANS le navigateur (barre d'adresse +
+  boutons bas = le symptôme « pas une vraie app »). La bannière ne s'affiche que sur iPhone hors
+  mode installé, avec la marche à suivre (Safari → Partager → Sur l'écran d'accueil) et un message
+  dédié si l'app est ouverte dans Chrome. Se ferme pour 7 jours. Meta `mobile-web-app-capable`
+  ajoutée en complément des meta Apple.
+- **🔒 Modèles par profil, contrôlables et verrouillables depuis un profil parent** (Réglages →
+  🤖 Modèles par profil) : une carte par membre — modèle 💬 Chat et ⌨️ Code pour les parents,
+  modèle dédié pour Nova (Zya) et Pixel (Zélie) — avec case « Verrouillé » par profil.
+  - Enfants verrouillés PAR DÉFAUT (GLM-4.7-flash gratuit), parents libres.
+  - Verrou à triple barrière : sélecteur de modèle inaccessible (bouton, menu +, Ctrl+K),
+    changement de modèle refusé dans le reducer, et **modèle imposé à l'envoi** — même une vieille
+    conversation créée avant le verrouillage part sur le modèle choisi par les parents.
+  - Réglage `modelLocks` synchronisé Firebase (s'applique à tous les appareils de la famille).
+
+### Technique
+- Version : `1.50` — SW cache : `ricard-ai-v50`
+- Testé sur copie locale sans Firebase (viewport 375×812 + desktop) : navigation enfant,
+  sortie/retour profil, drawer, verrouillage réglages et modèle, persistance des locks.
+
+---
+
 ## [1.49] — 2026-09-09 · 🚨 Fin des pertes de conversations + mémoire à gestion des contradictions
 
 ### Corrigé
