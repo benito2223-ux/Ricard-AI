@@ -5,6 +5,32 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [1.51] — 2026-09-09 · 🎨 Génération d'images GRATUITE (Pollinations, sans clé)
+
+### Ajouté
+- **🆓 Deux moteurs d'illustration gratuits** : Flux et Turbo via **Pollinations.ai** — aucun compte,
+  aucune clé API, aucun coût, appel direct depuis le navigateur (API ouverte, CORS autorisé).
+  Disponibles dans le sélecteur de modèle d'illustration (chip 🎨 dans la barre de saisie et
+  Réglages → 🎨 Illustrations), proposés en tête de liste quel que soit le fournisseur IA.
+- **Défaut intelligent pour les abonnés GLM Coding Plan** : l'abonnement ne couvre pas CogView-4
+  (réservé au pay-as-you-go) — la génération d'images échouait donc avec « Insufficient balance ».
+  Désormais, si la case Coding Plan est cochée, le modèle d'illustration par défaut bascule
+  automatiquement sur **Flux (Gratuit)** ; sans Coding Plan, CogView-4 reste le défaut sur Z.AI.
+- Les images générées sont intégrées en **dataURL dans la conversation** (768×768) : elles survivent
+  aux rechargements et à l' hors-ligne, contrairement aux URL temporaires des API payantes.
+
+### Technique
+- Version : `1.51` — SW cache : `ricard-ai-v51`
+- Flux vérifié de bout en bout : requête exacte de l'app validée contre l'API Pollinations
+  (HTTP 200, JPEG 768×768, CORS ouvert pour l'origine ricard-ai.surge.sh), rendu dataURL dans le fil
+  et chemin d'erreur testés en navigateur. ⚠️ Pollinations refuse les origines `http://localhost`
+  (403) — le mode illustration se teste en production, pas en serveur local.
+- Quota anonyme Pollinations : quelques secondes entre deux images (pas de limite dure connue) ;
+  si un jour ça devient juste, un repli possible est FLUX via le worker Cloudflare existant
+  (Workers AI, ~50 images/jour gratuites).
+
+---
+
 ## [1.50] — 2026-09-09 · Ergonomie mobile enfants, sortie de profil, verrouillage des modèles
 
 ### Corrigé

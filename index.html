@@ -462,7 +462,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.50';
+const APP_VERSION = '1.51';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -552,6 +552,14 @@ const ZAI_MODELS = [
 const ZAI_IMAGE_MODELS = [
   { id:'cogview-4', name:'CogView-4', by:'Z.AI', size:'1024×1024' },
   { id:'glm-image', name:'GLM-Image', by:'Z.AI', size:'1024×1024' },
+];
+// ── Génération d'images GRATUITE (Pollinations.ai) ─────────────
+// Aucune clé API, aucun compte, appel direct depuis le navigateur (CORS ouvert).
+// Flux = meilleure qualité, Turbo = plus rapide. Quota anonyme limité
+// (quelques secondes entre deux images) mais sans coût et sans inscription.
+const FREE_IMAGE_MODELS = [
+  { id:'pollinations/flux',  name:'Flux — Gratuit 🆓', by:'Pollinations', size:'768×768', free:true },
+  { id:'pollinations/turbo', name:'Turbo — Gratuit 🆓', by:'Pollinations', size:'768×768', free:true },
 ];
 
 const DEFAULT_MODELS_BY_PROVIDER = {
@@ -913,9 +921,14 @@ function sanitizeDefaultModels(dm, prov) {
   });
   return out;
 }
-function sanitizeImageModel(img, prov) {
+function sanitizeImageModel(img, prov, codingPlan) {
+  // Pollinations fonctionne sur n'importe quel fournisseur (moteur indépendant, sans clé)
+  if (img && img.startsWith('pollinations/')) return img;
   if (prov !== 'zai') return img || 'openai/dall-e-3';
-  return (img && ZAI_IMAGE_MODELS.some(m => m.id === img)) ? img : 'cogview-4';
+  if (img && ZAI_IMAGE_MODELS.some(m => m.id === img)) return img;
+  // Z.AI sans modèle valide : si clé Coding Plan, CogView n'est pas couvert par
+  // l'abonnement → moteur gratuit par défaut plutôt qu'une erreur « Insufficient balance »
+  return codingPlan ? 'pollinations/flux' : 'cogview-4';
 }
 // Verrouillage du modèle par profil (contrôle parental) : un profil verrouillé ne voit
 // pas le sélecteur de modèle ET ses requêtes partent toujours sur le modèle défini
@@ -969,7 +982,7 @@ function loadSettings() {
       zelie: { enabled:false, start:'08:00', end:'21:00' },
     },
     dailyGoals:        s.dailyGoals        ?? { zya:'', zelie:'' },
-    defaultImageModel: sanitizeImageModel(s.defaultImageModel, provider),
+    defaultImageModel: sanitizeImageModel(s.defaultImageModel, provider, s.zaiCodingPlan),
   };
 }
 function dateKey() { const d = new Date(); return `${d.getFullYear()}_${d.getMonth()+1}_${d.getDate()}`; }
@@ -1336,6 +1349,30 @@ const IMAGE_MODELS = [
 ];
 
 async function generateImage({ apiKey, model, prompt, onDone, onError }) {
+  // ── Moteur gratuit Pollinations — aucune clé requise ──
+  // L'API est une simple URL GET qui renvoie les octets de l'image. On l'intègre
+  // en dataURL pour que l'image vive dans la conversation (recharge hors-ligne OK).
+  if (model && model.startsWith('pollinations/')) {
+    const plModel = model.split('/')[1] || 'flux';
+    const seed = Math.floor(Math.random() * 1e9); // même seed = même image (URL reproductible)
+    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=${plModel}&width=768&height=768&seed=${seed}&nologo=true`;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        const hint = res.status === 429 ? ' — trop de demandes d\'un coup, réessaie dans quelques secondes' : '';
+        onError?.(`Pollinations : erreur ${res.status}${hint}`); return;
+      }
+      const blob = await res.blob();
+      const reader = new FileReader();
+      reader.onloadend = () => onDone?.({ url: reader.result, revised: null });
+      reader.onerror = () => onError?.('Image illisible');
+      reader.readAsDataURL(blob);
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      onError?.(err.message || 'Erreur réseau Pollinations');
+    }
+    return;
+  }
   const prov = getActiveProvider();
   try {
     const res = await fetch(prov.imageUrl(), {
@@ -2872,7 +2909,8 @@ function ChatHeader({ tabId, title, icon, accentColor }) {
 // ─── Image Model Picker Modal ─────────────────────────────────
 function ImageModelPickerModal({ current, onSelect, onClose }) {
   const isZai = getActiveProviderId() === 'zai';
-  const FEATURED_IMAGE_MODELS = isZai ? ZAI_IMAGE_MODELS : IMAGE_MODELS;
+  // Les modèles gratuits Pollinations sont proposés en premier, quel que soit le fournisseur
+  const FEATURED_IMAGE_MODELS = [...FREE_IMAGE_MODELS, ...(isZai ? ZAI_IMAGE_MODELS : IMAGE_MODELS)];
   const [tab, setTab]       = useState('featured');   // 'featured' | 'catalog'
   const [search, setSearch] = useState('');
   const [liveModels, setLiveModels] = useState(() => Array.isArray(_liveModelsCache) ? _liveModelsCache : null);
@@ -3449,7 +3487,7 @@ function InputArea({ tabId, placeholder, socratic }) {
     // ── Mode génération d'image ──────────────────────────
     if (imageMode && text.trim()) {
       const prompt = text.trim();
-      const imgModel = state.settings.defaultImageModel || (getActiveProviderId() === 'zai' ? 'cogview-4' : 'openai/dall-e-3');
+      const imgModel = state.settings.defaultImageModel || 'pollinations/flux';
       const userMsgId = uuid();
       const imgMsgId  = uuid();
       // Message utilisateur
@@ -5181,21 +5219,23 @@ function ModelRow({ m, current, onSelect }) {
 // ─── Settings — section image model (composant dédié pour le picker) ──
 function SettingsImageModelSection({ s, setS }) {
   const [showPicker, setShowPicker] = useState(false);
-  const activeModel = IMAGE_MODELS.find(m => m.id === s.defaultImageModel);
+  const allImageModels = [...FREE_IMAGE_MODELS, ...IMAGE_MODELS, ...ZAI_IMAGE_MODELS];
+  const activeModel = allImageModels.find(m => m.id === s.defaultImageModel);
+  const isFree = !!activeModel?.free || s.defaultImageModel?.startsWith('pollinations/');
   const modelLabel = activeModel
-    ? `${activeModel.name} (${activeModel.by})`
+    ? `${activeModel.name}`
     : (s.defaultImageModel?.split('/').pop() || 'DALL·E 3');
 
   return (
     <section>
       <div style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', letterSpacing:.8, color:'#888', marginBottom:8 }}>🎨 Illustrations — Modèle par défaut</div>
       <button onClick={() => setShowPicker(true)}
-        style={{ width:'100%', padding:'10px 14px', border:`1.5px solid #7c3aed`, borderRadius:8, fontSize:14, background:'#f9f0ff', cursor:'pointer', color:'#7c3aed', display:'flex', alignItems:'center', justifyContent:'space-between', fontFamily:'var(--pc-font-body)', fontWeight:600 }}>
-        <span>🎨 {modelLabel}</span>
-        <span style={{ fontSize:12, color:'#a855f7' }}>Changer ▾</span>
+        style={{ width:'100%', padding:'10px 14px', border:`1.5px solid ${isFree ? '#2e7d32' : '#7c3aed'}`, borderRadius:8, fontSize:14, background:isFree ? '#eef7ef' : '#f9f0ff', cursor:'pointer', color:isFree ? '#2e7d32' : '#7c3aed', display:'flex', alignItems:'center', justifyContent:'space-between', fontFamily:'var(--pc-font-body)', fontWeight:600 }}>
+        <span>{isFree ? '🆓 ' : '🎨 '}{modelLabel}</span>
+        <span style={{ fontSize:12, opacity:.7 }}>Changer ▾</span>
       </button>
       <p style={{ fontSize:12, color:'#aaa', margin:'6px 0 0' }}>
-        Active le mode 🎨 dans le chat pour générer des images. Catalogue complet OpenRouter disponible.
+        Active le mode 🎨 dans le chat pour générer des images. <b style={{ color:'#2e7d32' }}>Les modèles Pollinations sont gratuits et sans clé</b> — parfaits avec un abonnement GLM Coding Plan (qui ne couvre pas CogView).
       </p>
       {showPicker && (
         <ImageModelPickerModal
@@ -5290,7 +5330,9 @@ function Settings() {
                       const dm = { ...(prev.defaultModels || base) };
                       Object.keys(dm).forEach(t2 => { dm[t2] = sanitizeModelForProvider(dm[t2], p.id) || base[t2] || dm[t2]; });
                       const img = p.id === 'zai'
-                        ? (ZAI_IMAGE_MODELS.some(m => m.id === prev.defaultImageModel) ? prev.defaultImageModel : 'cogview-4')
+                        ? (prev.defaultImageModel?.startsWith('pollinations/')
+                            ? prev.defaultImageModel
+                            : (ZAI_IMAGE_MODELS.some(m => m.id === prev.defaultImageModel) ? prev.defaultImageModel : (prev.zaiCodingPlan ? 'pollinations/flux' : 'cogview-4')))
                         : (prev.defaultImageModel || 'openai/dall-e-3');
                       return { ...prev, provider: p.id, defaultModels: dm, defaultImageModel: img };
                     })}
