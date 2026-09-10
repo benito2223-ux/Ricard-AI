@@ -462,7 +462,7 @@ function uuid() {
 }
 
 // ─── App version ────────────────────────────────────────────
-const APP_VERSION = '1.51';
+const APP_VERSION = '1.52';
 
 // ─── Mobile detection ────────────────────────────────────────
 function useIsMobile() {
@@ -1070,21 +1070,87 @@ function networkErrorMsg(err, url, voie) {
 }
 
 async function streamChat({ apiKey, model, messages, onChunk, onDone, onError, signal }) {
-  // Safari iOS et certains navigateurs mobiles ne supportent pas le SSE
-  // → toujours JSON (non-streaming) sur mobile
-  const isMobileUA = /iPad|iPhone|iPod|Android|Mobile|CriOS|FxiOS/i.test(navigator.userAgent)
-                  || window.innerWidth < 768;
-
   const prov = getActiveProvider();
   const HEADERS = {
     'Authorization': `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
     ...prov.extraHeaders,
   };
+  // ── Streaming SSE sur TOUS les appareils (desktop ET mobile/iOS) ──
+  // L'ancien contournement « JSON non-streamé sur mobile » (SSE censé cassé sur iOS)
+  // faisait attendre la réponse ENTIÈRE avant le premier mot : latence perçue x5-10
+  // dans la PWA iPhone. iOS moderne streame très bien ; si le flux casse en cours de
+  // route (clavier, rotation, réseau), repli automatique sur la voie JSON fiabilisée.
+  const isMobileUA = /iPad|iPhone|iPod|Android|Mobile|CriOS|FxiOS/i.test(navigator.userAgent)
+                  || window.innerWidth < 768;
 
-  // ── Mode mobile : JSON sans signal (évite les aborts iOS sur viewport resize) ──
-  // iOS Safari avorte resp.text() lors des changements de viewport (clavier, rotation).
-  // On retire le signal sur mobile et on réessaie automatiquement jusqu'à 3 fois.
+  // ── 1re voie : streaming SSE (retry x3, rate-limit géré) ──
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise(r => setTimeout(r, 1500 * attempt));
+    if (signal?.aborted) return;
+    let resp;
+    try {
+      resp = await fetch(prov.chatUrl(), {
+        method: 'POST', headers: HEADERS,
+        body: JSON.stringify({ model, messages, stream: true }),
+        signal,
+      });
+    } catch(err) {
+      if (err.name === 'AbortError') return;
+      if (attempt === 2) {
+        if (isMobileUA) break; // → repli JSON mobile
+        onError?.(networkErrorMsg(err, prov.chatUrl(), 'SSE'));
+        return;
+      }
+      continue;
+    }
+    if (!resp.ok) {
+      let msg = '', errBody = null;
+      try { errBody = await resp.json(); msg = errBody.error?.message || ''; } catch {}
+      if (isRateLimitedResp(resp.status, errBody) && attempt < 2) continue; // retry silencieux
+      // Codes pouvant traduire un refus du streaming → tenter le JSON sur mobile
+      if (isMobileUA && [400, 404, 422].includes(resp.status)) break;
+      onError?.(`[HTTP ${resp.status}] ${msg || 'Erreur sans message'}`);
+      return;
+    }
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let full = '', inTk = 0, outTk = 0, buf = '';
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const d = line.slice(6).trim();
+          if (d === '[DONE]') { onDone?.({ text: full, inputTokens: inTk, outputTokens: outTk }); return; }
+          try {
+            const j = JSON.parse(d);
+            const delta = j.choices?.[0]?.delta?.content ?? '';
+            if (delta) { full += delta; onChunk?.(delta, full); }
+            if (j.usage) { inTk = j.usage.prompt_tokens || 0; outTk = j.usage.completion_tokens || 0; }
+          } catch {}
+        }
+      }
+    } catch(err) {
+      if (err.name === 'AbortError') return;
+      if (isMobileUA) break; // flux cassé (iOS clavier/rotation/réseau) → repli JSON
+      onError?.('Connexion interrompue.');
+      return;
+    }
+    if (full || inTk || outTk) { onDone?.({ text: full, inputTokens: inTk, outputTokens: outTk }); return; }
+    // Flux terminé sans aucun contenu : la voie JSON a un meilleur diagnostic (finish_reason)
+    if (isMobileUA) break;
+    onError?.('Réponse vide du modèle. Essaie un autre modèle.');
+    return;
+  }
+
+  // ── Repli (mobile uniquement) : JSON non-streamé, réponse complète en un bloc ──
+  // Ancienne voie, gardée comme filet de sécurité : retries serrés, sans signal
+  // (iOS avortait resp.text() lors des changements de viewport — clavier, rotation).
   if (isMobileUA) {
     const BODY = JSON.stringify({ model, messages, stream: false });
     let rawText = null;
@@ -1158,59 +1224,6 @@ async function streamChat({ apiKey, model, messages, onChunk, onDone, onError, s
     }
     return;
   }
-
-  // ── Mode desktop : streaming SSE (avec signal AbortController) ─
-  // Retry silencieux jusqu'à 3 fois en cas de rate-limit/surcharge temporaire Z.AI (code 1302/1305, HTTP 429).
-  let resp;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt > 0) await new Promise(r => setTimeout(r, 1500 * attempt));
-    if (signal?.aborted) return;
-    try {
-      resp = await fetch(prov.chatUrl(), {
-        method: 'POST', headers: HEADERS,
-        body: JSON.stringify({ model, messages, stream: true }),
-        signal,
-      });
-    } catch(err) {
-      if (err.name === 'AbortError') return;
-      if (attempt === 2) { onError?.(networkErrorMsg(err, prov.chatUrl(), 'desktop/SSE')); return; }
-      continue;
-    }
-    if (!resp.ok) {
-      let msg = '', errBody = null;
-      try { errBody = await resp.json(); msg = errBody.error?.message || ''; } catch {}
-      if (isRateLimitedResp(resp.status, errBody) && attempt < 2) continue; // retry silencieux
-      onError?.(`[HTTP ${resp.status}] ${msg || 'Erreur sans message'}`); return;
-    }
-    break; // succès → sortir de la boucle de retry
-  }
-  const reader = resp.body.getReader();
-  const dec = new TextDecoder();
-  let full = '', inTk = 0, outTk = 0, buf = '';
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      const lines = buf.split('\n');
-      buf = lines.pop() ?? '';
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const d = line.slice(6).trim();
-        if (d === '[DONE]') { onDone?.({ text: full, inputTokens: inTk, outputTokens: outTk }); return; }
-        try {
-          const j = JSON.parse(d);
-          const delta = j.choices?.[0]?.delta?.content ?? '';
-          if (delta) { full += delta; onChunk?.(delta, full); }
-          if (j.usage) { inTk = j.usage.prompt_tokens || 0; outTk = j.usage.completion_tokens || 0; }
-        } catch {}
-      }
-    }
-  } catch(err) {
-    if (err.name === 'AbortError') return;
-    onError?.('Connexion interrompue.'); return;
-  }
-  onDone?.({ text: full, inputTokens: inTk, outputTokens: outTk });
 }
 
 // ─── Voice utilities ─────────────────────────────────────────

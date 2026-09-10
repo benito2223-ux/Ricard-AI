@@ -5,6 +5,29 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [1.52] — 2026-09-09 · ⚡ Streaming sur mobile : fin de l'attente des réponses complètes
+
+### Corrigé
+- **🚨 Sur mobile (PWA iPhone incluse), l'app attendait la réponse ENTIÈRE avant d'afficher le
+  premier mot.** `streamChat` forçait `stream: false` sur tout appareil mobile (« Safari iOS ne
+  supporte pas le SSE » — vrai en 2021, obsolète depuis) : une réponse de 20 s paraissait 20 s,
+  là où le desktop affichait le premier mot en ~2 s. C'était la principale cause de latence perçue.
+  - **Fix** : le streaming SSE est désormais utilisé sur TOUS les appareils. Le repli JSON
+    non-streamé est conservé comme filet de sécurité : si le flux casse en cours de route
+    (clavier/rotation iOS, réseau), l'app retombe automatiquement sur la voie JSON fiabilisée
+    (retries x3) au lieu d'afficher une erreur. Codes 400/404/422 sur le streaming → repli JSON
+    également (refus potentiel du SSE par une passerelle).
+- Bonus : un flux SSE qui se termine sans aucun contenu affiche maintenant « Réponse vide du
+  modèle » au lieu d'une bulle vide silencieuse.
+
+### Technique
+- Version : `1.52` — SW cache : `ricard-ai-v52`
+- Testé en navigateur avec réponses SSE simulées : progression chunk par chunk (4/4), repli JSON
+  automatique après casse du flux (séquence observée `stream:true` → `stream:false` → réponse
+  complète avec tokens), et SSE mobile sans repli. Compilation Babel vérifiée.
+
+---
+
 ## [1.51] — 2026-09-09 · 🎨 Génération d'images GRATUITE (Pollinations, sans clé)
 
 ### Ajouté
